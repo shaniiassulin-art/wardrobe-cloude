@@ -1,0 +1,8 @@
+{
+  "name": "Open Wardrobe",
+  "description": "A local-first AI wardrobe gallery.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
