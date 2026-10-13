@@ -63,6 +63,7 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 | `OPENAI_VISION_MODEL` | `gpt-5.4-mini` |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` |
 | `OPENAI_IMAGE_QUALITY` | `high` |
+| `OPENAI_CATALOG_QUALITY` | `low` (clothing imports; each garment can be redone at medium) |
 | `OPENAI_LOOK_QUALITY` | `medium` (outfit looks) |
 | `OPENAI_MODELED_QUALITY` | `medium` (garment photographed on you) |
 | `PHOTOROOM_API_KEY` | Optional, enables the Photoroom catalog import |

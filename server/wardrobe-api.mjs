@@ -1864,10 +1864,10 @@ Respond in strict JSON format:
           bytes = await frameTransparentGarment(rebuilt, 1024, 0.88);
         } else if (stageName === "garment") {
           chromaKeyUsed = chooseChromaKey(current.metadata.color);
-          // Catalog imports only need a product shot, so they default to the cheapest quality
-          const garmentQuality = current.mode === "catalog"
+          // Catalog imports start cheap; the user can redo a bad one at medium quality
+          const garmentQuality = current.stages.garment.quality || (current.mode === "catalog"
             ? setting("OPENAI_CATALOG_QUALITY", "low")
-            : setting("OPENAI_IMAGE_QUALITY", "high");
+            : setting("OPENAI_IMAGE_QUALITY", "high"));
           const basePrompt = buildGarmentPrompt(current.metadata, chromaKeyUsed);
           if (key) {
             bytes = await openAIEdit({
@@ -2498,6 +2498,8 @@ Respond in strict JSON format:
           if (stageName === "crop") throw Object.assign(new Error("Upload the image again to create new crops"), { status: 400 });
           const input = await body(request);
           job.stages[stageName].prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 1200) || null : null;
+          // "Redo at medium quality" for a garment the cheap pass did not capture well
+          if (stageName === "garment" && ["low", "medium", "high"].includes(input.quality)) job.stages.garment.quality = input.quality;
           job.stages[stageName].status = "queued";
           job.stages[stageName].decision = null;
           await saveJob(job);
