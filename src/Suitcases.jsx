@@ -176,7 +176,7 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
                 {packedItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={fittedImage(item.thumbnail || item.image)} alt="" />
+                      <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>
@@ -200,7 +200,7 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
                 {availableItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={fittedImage(item.thumbnail || item.image)} alt="" />
+                      <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>
