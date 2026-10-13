@@ -18,3 +18,10 @@ export async function toBrowserImage(file) {
   const blob = Array.isArray(converted) ? converted[0] : converted;
   return new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), { type: "image/jpeg" });
 }
+
+// Wardrobe garment images, cropped and centred by the server so all items look
+// the same size. Other images (photos on the model, outfits) are left as they are.
+export function fittedImage(url) {
+  if (typeof url !== "string" || !url.startsWith("/api/import/library/") || !url.split("?")[0].endsWith("-garment.png")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}fit=1`;
+}

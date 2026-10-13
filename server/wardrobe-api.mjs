@@ -958,6 +958,32 @@ async function photoroomGhostMannequin({ key, baseUrl, image }) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+// Crops a transparent garment image to the garment itself (ignoring faint
+// specks) and centres it on a square with a uniform margin, so every item looks
+// the same size in the wardrobe whatever tool produced it.
+export async function fitGarmentToSquare(bytes, size = 1024, occupancy = 0.9) {
+  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let minX = info.width, minY = info.height, maxX = -1, maxY = -1;
+  for (let index = 3, pixel = 0; index < data.length; index += 4, pixel += 1) {
+    if (data[index] < 24) continue;
+    const x = pixel % info.width;
+    const y = (pixel - x) / info.width;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  if (maxX < minX) return bytes;
+  const target = Math.round(size * occupancy);
+  const garment = await sharp(data, { raw: info })
+    .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
+    .resize(target, target, { fit: "inside" })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+  return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: garment.data, left: Math.floor((size - garment.info.width) / 2), top: Math.floor((size - garment.info.height) / 2) }])
+    .png()
+    .toBuffer();
+}
+
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   const validEditModel = (!model || model.includes("dall-e") || model.includes("mini")) ? "gpt-image-2" : model;
@@ -2347,7 +2373,13 @@ Respond in strict JSON format:
       }
       const libraryAssetMatch = url.pathname.match(/^\/api\/import\/library\/([\w.-]+)$/i);
       if (libraryAssetMatch && request.method === "GET") {
-        return imageResponse(await requireBytes(libraryKey(path.basename(libraryAssetMatch[1]))));
+        const name = path.basename(libraryAssetMatch[1]);
+        const bytes = await requireBytes(libraryKey(name));
+        // ?fit=1 serves the garment cropped and centred for an even wardrobe grid
+        if (url.searchParams.get("fit") === "1" && name.endsWith("-garment.png")) {
+          return imageResponse(await fitGarmentToSquare(bytes));
+        }
+        return imageResponse(bytes);
       }
       const assetMatch = url.pathname.match(/^\/api\/import\/assets\/([a-f0-9-]{36})\/([\w.-]+)$/i);
       if (assetMatch && request.method === "GET") {

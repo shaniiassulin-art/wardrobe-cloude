@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, MagicWand, PencilSimple, Plus, Suitcase, Trash, X } from "@phosphor-icons/react";
+import { fittedImage } from "./image-files.js";
 
 export const newSuitcaseId = () => `suitcase-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -175,7 +176,7 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
                 {packedItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={item.thumbnail || item.image} alt="" />
+                      <img src={fittedImage(item.thumbnail || item.image)} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>
@@ -199,7 +200,7 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
                 {availableItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={item.thumbnail || item.image} alt="" />
+                      <img src={fittedImage(item.thumbnail || item.image)} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>

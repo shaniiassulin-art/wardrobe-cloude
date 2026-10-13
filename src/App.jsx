@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
-import { toBrowserImage } from "./image-files.js";
+import { fittedImage, toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
@@ -212,7 +212,7 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
         data-testid={`wardrobe-item-${item.id}`}
       >
         <OptimizedImage
-          src={item.thumbnail || item.image}
+          src={fittedImage(item.thumbnail || item.image)}
           alt=""
           sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px"
           breakpoints={[160, 240, 320, 480, 640]}
@@ -1216,7 +1216,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
             <div className="selected-pieces-tray">
               {selectedItems.map((item) => (
                 <div key={item.id} className="selected-piece-badge">
-                  <img src={item.thumbnail || item.image} alt={item.name} />
+                  <img src={fittedImage(item.thumbnail || item.image)} alt={item.name} />
                   <div>
                     <strong style={{ display: "block", fontSize: "12px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.name}
@@ -1333,7 +1333,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
                     <span style={{ position: "absolute", top: "5px", right: "5px", fontSize: "10px", background: "rgba(25, 24, 22, 0.05)", padding: "1px 5px", borderRadius: "2px", color: "var(--muted)" }}>
                       {TYPE_MAP[item.part]?.singular || item.part}
                     </span>
-                    <img src={item.thumbnail || item.image} alt={item.name} style={{ width: "56px", height: "56px", objectFit: "contain", marginTop: "14px", marginBottom: "4px" }} />
+                    <img src={fittedImage(item.thumbnail || item.image)} alt={item.name} style={{ width: "56px", height: "56px", objectFit: "contain", marginTop: "14px", marginBottom: "4px" }} />
                     <span style={{ fontSize: "11px", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: "1.2", padding: "0 2px" }}>
                       {item.name}
                     </span>
