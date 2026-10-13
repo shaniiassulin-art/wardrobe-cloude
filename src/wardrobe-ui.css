@@ -339,3 +339,66 @@
   .luggage-packed-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .suitcase-picker__create { flex-direction: column; }
 }
+
+/* ---------- Motion ---------- */
+/* Window entrances are animated in motion.js */
+.viewer-entry { animation: none; }
+
+.animated-title {
+  margin: 0 0 18px;
+  font-size: clamp(28px, 4.2vw, 46px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.animated-title__word { display: inline-block; margin-inline-end: 0.26em; }
+
+/* Soft, slowly drifting colour behind the page */
+.app-shell { position: relative; isolation: isolate; }
+.gallery-pane { position: relative; z-index: 1; }
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ambient-bg::before,
+.ambient-bg::after {
+  content: "";
+  position: absolute;
+  width: 55vmax;
+  height: 55vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: .5;
+}
+.ambient-bg::before {
+  top: -20vmax;
+  inset-inline-start: -15vmax;
+  background: radial-gradient(circle, rgba(110, 48, 46, .16), transparent 65%);
+  animation: ambient-drift-a 26s ease-in-out infinite alternate;
+}
+.ambient-bg::after {
+  bottom: -25vmax;
+  inset-inline-end: -20vmax;
+  background: radial-gradient(circle, rgba(196, 164, 120, .28), transparent 65%);
+  animation: ambient-drift-b 32s ease-in-out infinite alternate;
+}
+@keyframes ambient-drift-a { to { transform: translate(12vmax, 8vmax) scale(1.1); } }
+@keyframes ambient-drift-b { to { transform: translate(-10vmax, -6vmax) scale(1.15); } }
+
+/* Cards lift with a soft shadow while tilting under the mouse */
+.gallery-item__main { will-change: transform; }
+@media (hover: hover) and (pointer: fine) {
+  .gallery-item__main:hover { box-shadow: 0 18px 40px rgba(39, 31, 23, .14); background: rgba(25, 24, 22, .02); }
+}
+
+@media (max-width: 520px) {
+  .animated-title { margin-bottom: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-bg::before,
+  .ambient-bg::after { animation: none; }
+}

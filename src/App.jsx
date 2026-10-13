@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
+import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
+
+// Page heading whose words fade in from a soft blur
+function AnimatedTitle({ text }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    revealWords(ref.current?.querySelectorAll(".animated-title__word"));
+  }, [text]);
+  return (
+    <h1 className="animated-title" ref={ref} aria-label={text}>
+      {text.split(" ").map((word, index) => <span key={`${word}-${index}`} className="animated-title__word" aria-hidden="true">{word}</span>)}
+    </h1>
+  );
+}
 
 const STORAGE_KEY = "open-wardrobe-edits-v1";
 const DELETED_STORAGE_KEY = "open-wardrobe-deleted-v1";
@@ -182,6 +196,7 @@ function sampleImageColor(image, canvas, event) {
 // of the garment on the user when one exists. In select mode a tap toggles it.
 function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSelect }) {
   const [showModeled, setShowModeled] = useState(false);
+  const tilt = useMemo(() => tiltHandlers(), []);
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
   const hasModeled = Boolean(item.modeledImage);
 
@@ -190,6 +205,7 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
       <button
         className="gallery-item__main"
         type="button"
+        {...tilt}
         onClick={() => (selectMode ? onToggleSelect(item.id) : onOpen(item.id))}
         aria-label={selectMode ? `בחירת ${item.name || type}` : `צפייה ב-${item.name || type}`}
         aria-pressed={selectMode ? checked : undefined}
@@ -1542,10 +1558,23 @@ export function App() {
   const [userModalOpen, setUserModalOpen] = useState(false);
 
   // Suitcases (one per event or trip), saved on the server
+  const paneRef = useRef(null);
   const [suitcases, setSuitcases] = useState([]);
   const [activeSuitcaseId, setActiveSuitcaseId] = useState(null);
   const [luggageFlatlayModalOpen, setLuggageFlatlayModalOpen] = useState(false);
   const [luggageFlatlayData, setLuggageFlatlayData] = useState(null);
+
+  useEffect(() => {
+    const stopScroll = startSmoothScroll();
+    const stopOverlays = watchOverlays();
+    return () => { stopScroll(); stopOverlays(); };
+  }, []);
+
+  // Cards rise into place when the wardrobe loads or the tab changes
+  useLayoutEffect(() => {
+    if (loading || !paneRef.current) return;
+    revealChildren(paneRef.current.querySelectorAll(".gallery-grid, .looks-grid, .luggage-packed-grid"));
+  }, [activeType, loading]);
 
   const fetchWardrobesList = useCallback(async () => {
     try {
@@ -2053,8 +2082,10 @@ export function App() {
 
   return (
     <div className={`app-shell${selectedItem ? " has-selection" : ""}`}>
-      <main className="gallery-pane">
+      <div className="ambient-bg" aria-hidden="true" />
+      <main className="gallery-pane" ref={paneRef}>
         <header className="gallery-header">
+          <AnimatedTitle text={currentUser?.name ? `המלתחה של ${currentUser.name.split(" ")[0]}` : "המלתחה שלי"} />
           <div className="gallery-meta-row">
             <p className="piece-count">
               {activeType === "looks"
