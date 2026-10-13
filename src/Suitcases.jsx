@@ -5,9 +5,18 @@ import { fittedImage } from "./image-files.js";
 export const newSuitcaseId = () => `suitcase-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 // Chooses which suitcase(s) to pack the given items into, or creates a new one
-export function SuitcasePicker({ suitcases, itemIds, onAdd, onRemove, onCreate, onClose }) {
+// What a suitcase holds, in words: "3 פריטים · 2 לוקים"
+export const suitcaseSummary = (suitcase) => {
+  const items = suitcase.garmentIds?.length || 0;
+  const looks = suitcase.outfitIds?.length || 0;
+  return [`${items} פריטים`, looks ? `${looks} ${looks === 1 ? "לוק" : "לוקים"}` : null].filter(Boolean).join(" · ");
+};
+
+// field is "garmentIds" when packing wardrobe items, "outfitIds" when packing looks
+export function SuitcasePicker({ suitcases, itemIds, field = "garmentIds", onAdd, onRemove, onCreate, onClose }) {
   const [newTitle, setNewTitle] = useState("");
   const single = itemIds.length === 1;
+  const isLook = field === "outfitIds";
 
   useEffect(() => {
     const onKeyDown = (event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
@@ -28,7 +37,7 @@ export function SuitcasePicker({ suitcases, itemIds, onAdd, onRemove, onCreate, 
         <header className="builder-header">
           <div>
             <h2 id="suitcase-picker-title">הוספה למזוודה</h2>
-            <p>{single ? "בחרי לאיזו מזוודה להוסיף את הפריט." : `בחרי לאיזו מזוודה להוסיף ${itemIds.length} פריטים.`}</p>
+            <p>{isLook ? "בחרי לאיזו מזוודה להוסיף את הלוק." : single ? "בחרי לאיזו מזוודה להוסיף את הפריט." : `בחרי לאיזו מזוודה להוסיף ${itemIds.length} פריטים.`}</p>
           </div>
           <button className="import-icon-button" type="button" onClick={onClose} aria-label="סגירה"><X size={20} /></button>
         </header>
@@ -36,13 +45,13 @@ export function SuitcasePicker({ suitcases, itemIds, onAdd, onRemove, onCreate, 
         {suitcases.length > 0 && (
           <ul className="suitcase-picker__list">
             {suitcases.map((suitcase) => {
-              const containsAll = itemIds.every((id) => suitcase.garmentIds?.includes(id));
+              const containsAll = itemIds.every((id) => suitcase[field]?.includes(id));
               return (
                 <li key={suitcase.id}>
                   <Suitcase size={18} aria-hidden="true" />
                   <span className="suitcase-picker__name">
                     {suitcase.title || "מזוודה"}
-                    <small>{suitcase.garmentIds?.length || 0} פריטים</small>
+                    <small>{suitcaseSummary(suitcase)}</small>
                   </span>
                   {containsAll ? (
                     single ? (
@@ -82,12 +91,20 @@ export function SuitcasePicker({ suitcases, itemIds, onAdd, onRemove, onCreate, 
 }
 
 // Suitcases tab: one suitcase per event, each saved on the server
-export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, onRename, onDelete, onToggleItem, onGenerateFlatlay, onOpenItem, typeLabel }) {
+export function LuggageView({ items, outfits = [], onOpenLook, suitcases, activeId, onSelect, onCreate, onRename, onDelete, onToggleItem, onGenerateFlatlay, onOpenItem, typeLabel }) {
   const [newTitle, setNewTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(null);
   const active = suitcases.find((suitcase) => suitcase.id === activeId) || suitcases[0] || null;
   const packedItems = useMemo(() => (active ? items.filter((item) => active.garmentIds?.includes(item.id)) : []), [items, active]);
   const availableItems = useMemo(() => (active ? items.filter((item) => !active.garmentIds?.includes(item.id)) : []), [items, active]);
+  const packedLooks = useMemo(() => (active ? outfits.filter((look) => active.outfitIds?.includes(look.id)) : []), [outfits, active]);
+  const availableLooks = useMemo(() => (active ? outfits.filter((look) => !active.outfitIds?.includes(look.id)) : []), [outfits, active]);
+  // The flat lay shows everything packed: loose items plus the items of each packed look
+  const allPackedItems = useMemo(() => {
+    const ids = new Set([...packedItems.map((item) => item.id), ...packedLooks.flatMap((look) => look.garmentIds || (look.garments || []).map((g) => g.id))]);
+    return items.filter((item) => ids.has(item.id));
+  }, [items, packedItems, packedLooks]);
+  const [addTab, setAddTab] = useState("items");
 
   const create = (event) => {
     event.preventDefault();
@@ -114,7 +131,7 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
           >
             <Suitcase size={16} weight={active?.id === suitcase.id ? "fill" : "regular"} aria-hidden="true" />
             <span>{suitcase.title || "מזוודה"}</span>
-            <small>{suitcase.garmentIds?.length || 0}</small>
+            <small>{(suitcase.garmentIds?.length || 0) + (suitcase.outfitIds?.length || 0)}</small>
           </button>
         ))}
         <form className="suitcase-new" onSubmit={create}>
@@ -154,8 +171,8 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
               </h2>
             )}
             <div className="suitcase-header__actions">
-              {packedItems.length > 0 && (
-                <button type="button" className="primary-button" onClick={() => onGenerateFlatlay(packedItems, active)}>
+              {allPackedItems.length > 0 && (
+                <button type="button" className="primary-button" onClick={() => onGenerateFlatlay(allPackedItems, active)}>
                   <MagicWand size={15} /> פריסת המזוודה
                 </button>
               )}
@@ -170,9 +187,23 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
           </header>
 
           <section className="suitcase-section" aria-label="בתוך המזוודה">
-            <h3>בתוך המזוודה <small>({packedItems.length})</small></h3>
-            {packedItems.length ? (
+            <h3>בתוך המזוודה <small>({packedItems.length + packedLooks.length})</small></h3>
+            {packedItems.length || packedLooks.length ? (
               <div className="luggage-packed-grid">
+                {packedLooks.map((look) => (
+                  <article key={look.id} className="luggage-item-card luggage-look-card">
+                    <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenLook?.(look)} aria-label={`צפייה בלוק ${look.name}`}>
+                      <img src={look.image} alt="" loading="lazy" />
+                    </button>
+                    <div className="luggage-item-card__info">
+                      <h4 className="luggage-item-card__title">{look.name}</h4>
+                      <span className="luggage-item-card__part">לוק · {(look.garmentIds || look.garments || []).length} פריטים</span>
+                      <button type="button" className="luggage-unpack-btn" onClick={() => onToggleItem(active.id, look.id, "outfitIds")}>
+                        <Trash size={13} /> הסרה
+                      </button>
+                    </div>
+                  </article>
+                ))}
                 {packedItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
@@ -189,15 +220,39 @@ export function LuggageView({ items, suitcases, activeId, onSelect, onCreate, on
                 ))}
               </div>
             ) : (
-              <p className="suitcase-empty">המזוודה ריקה. הוסיפי בגדים מהרשימה למטה, או בחרי כמה בגדים בארון ולחצי "הוספה למזוודה".</p>
+              <p className="suitcase-empty">המזוודה ריקה. הוסיפי בגדים או לוקים מהרשימה למטה.</p>
             )}
           </section>
 
-          {availableItems.length > 0 && (
-            <section className="suitcase-section" aria-label="הוספה מהארון">
-              <h3>הוספה מהארון</h3>
+          {(availableItems.length > 0 || availableLooks.length > 0) && (
+            <section className="suitcase-section" aria-label="הוספה למזוודה">
+              <div className="suitcase-add-head">
+                <h3>הוספה למזוודה</h3>
+                <div className="suitcase-add-tabs" role="tablist">
+                  <button type="button" role="tab" aria-selected={addTab === "items"} className={addTab === "items" ? "is-on" : ""} onClick={() => setAddTab("items")}>פריטים <small>{availableItems.length}</small></button>
+                  <button type="button" role="tab" aria-selected={addTab === "looks"} className={addTab === "looks" ? "is-on" : ""} onClick={() => setAddTab("looks")}>לוקים <small>{availableLooks.length}</small></button>
+                </div>
+              </div>
+              {addTab === "looks" && !availableLooks.length && (
+                <p className="suitcase-empty">{outfits.length ? "כל הלוקים כבר במזוודה." : "עדיין אין לוקים שמורים. אפשר ליצור לוק בלשונית \"לוקים\"."}</p>
+              )}
+              {addTab === "items" && !availableItems.length && <p className="suitcase-empty">כל הפריטים כבר במזוודה.</p>}
               <div className="luggage-packed-grid">
-                {availableItems.map((item) => (
+                {(addTab === "looks" ? availableLooks : []).map((look) => (
+                  <article key={look.id} className="luggage-item-card luggage-look-card">
+                    <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenLook?.(look)} aria-label={`צפייה בלוק ${look.name}`}>
+                      <img src={look.image} alt="" loading="lazy" />
+                    </button>
+                    <div className="luggage-item-card__info">
+                      <h4 className="luggage-item-card__title">{look.name}</h4>
+                      <span className="luggage-item-card__part">לוק · {(look.garmentIds || look.garments || []).length} פריטים</span>
+                      <button type="button" className="secondary-button" onClick={() => onToggleItem(active.id, look.id, "outfitIds")}>
+                        <Plus size={13} /> הוספה
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {(addTab === "items" ? availableItems : []).map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
                       <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt="" />

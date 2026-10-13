@@ -774,7 +774,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   );
 }
 
-function LookViewerModal({ look, onClose, onDelete }) {
+function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
@@ -833,7 +833,14 @@ function LookViewerModal({ look, onClose, onDelete }) {
           <button className="delete-button" type="button" disabled={deleting} onClick={handleDelete}>
             <Trash size={15} /> מחיקת לוק
           </button>
-          <button className="primary-button" type="button" onClick={onClose}>סגור</button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {onPack && (
+              <button className="secondary-button" type="button" onClick={onPack}>
+                <Suitcase size={15} weight={suitcaseCount ? "fill" : "regular"} /> {suitcaseCount ? `במזוודה (${suitcaseCount})` : "הוספה למזוודה"}
+              </button>
+            )}
+            <button className="primary-button" type="button" onClick={onClose}>סגור</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1687,6 +1694,7 @@ export function App() {
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
+  const [packingLookId, setPackingLookId] = useState(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState("flatlay");
   const [autoModalOpen, setAutoModalOpen] = useState(false);
@@ -2106,7 +2114,7 @@ export function App() {
   };
 
   const saveSuitcase = (suitcase) => {
-    const saved = { ...suitcase, garmentIds: [...new Set(suitcase.garmentIds || [])] };
+    const saved = { ...suitcase, garmentIds: [...new Set(suitcase.garmentIds || [])], outfitIds: [...new Set(suitcase.outfitIds || [])] };
     setSuitcases((current) => current.some((s) => s.id === saved.id) ? current.map((s) => (s.id === saved.id ? saved : s)) : [...current, saved]);
     fetch(`/api/import/suitcases?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
       method: "POST",
@@ -2115,28 +2123,29 @@ export function App() {
     }).catch(() => setError("לא ניתן לשמור את המזוודה כרגע."));
   };
 
-  const createSuitcase = (title, garmentIds = []) => {
-    const suitcase = { id: newSuitcaseId(), title, garmentIds, createdAt: new Date().toISOString() };
+  const createSuitcase = (title, ids = [], field = "garmentIds") => {
+    const suitcase = { id: newSuitcaseId(), title, garmentIds: [], outfitIds: [], [field]: ids, createdAt: new Date().toISOString() };
     saveSuitcase(suitcase);
     setActiveSuitcaseId(suitcase.id);
     return suitcase;
   };
 
-  const addToSuitcase = (id, itemIds) => {
+  // field is "garmentIds" for wardrobe items or "outfitIds" for saved looks
+  const addToSuitcase = (id, itemIds, field = "garmentIds") => {
     const suitcase = suitcases.find((s) => s.id === id);
-    if (suitcase) saveSuitcase({ ...suitcase, garmentIds: [...(suitcase.garmentIds || []), ...itemIds] });
+    if (suitcase) saveSuitcase({ ...suitcase, [field]: [...(suitcase[field] || []), ...itemIds] });
   };
 
-  const removeFromSuitcase = (id, itemIds) => {
+  const removeFromSuitcase = (id, itemIds, field = "garmentIds") => {
     const suitcase = suitcases.find((s) => s.id === id);
-    if (suitcase) saveSuitcase({ ...suitcase, garmentIds: (suitcase.garmentIds || []).filter((x) => !itemIds.includes(x)) });
+    if (suitcase) saveSuitcase({ ...suitcase, [field]: (suitcase[field] || []).filter((x) => !itemIds.includes(x)) });
   };
 
-  const toggleInSuitcase = (id, itemId) => {
+  const toggleInSuitcase = (id, itemId, field = "garmentIds") => {
     const suitcase = suitcases.find((s) => s.id === id);
     if (!suitcase) return;
-    if (suitcase.garmentIds?.includes(itemId)) removeFromSuitcase(id, [itemId]);
-    else addToSuitcase(id, [itemId]);
+    if (suitcase[field]?.includes(itemId)) removeFromSuitcase(id, [itemId], field);
+    else addToSuitcase(id, [itemId], field);
   };
 
   const deleteSuitcase = (id) => {
@@ -2311,34 +2320,6 @@ export function App() {
                 </button>
               )}
 
-              {activeType === "looks" && (
-                <>
-                  <button
-                    type="button"
-                    className="create-look-btn"
-                    onClick={() => openLookBuilder([], "flatlay")}
-                  >
-                    <span>לוק ללא מודל (פריסה שטוחה)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="secondary-header-btn"
-                    onClick={() => openLookBuilder([], "modeled")}
-                  >
-                    <span>לוק על מודל</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="create-auto-btn"
-                    onClick={() => setAutoModalOpen(true)}
-                  >
-                    <span>יצירה אוטומטית</span>
-                  </button>
-                </>
-              )}
-
               <input
                 ref={modelFileInputRef}
                 type="file"
@@ -2370,6 +2351,21 @@ export function App() {
               </button>
             </div>
           </div>
+          {activeType === "looks" && (
+            <div className="looks-actions">
+              <button type="button" className="create-look-btn" onClick={() => openLookBuilder([], "flatlay")}>
+                <span className="label-long">לוק ללא מודל (פריסה שטוחה)</span>
+                <span className="label-short">פריסה שטוחה</span>
+              </button>
+              <button type="button" className="secondary-header-btn" onClick={() => openLookBuilder([], "modeled")}>
+                <span>לוק על מודל</span>
+              </button>
+              <button type="button" className="create-auto-btn" onClick={() => setAutoModalOpen(true)}>
+                <span className="label-long">יצירה אוטומטית</span>
+                <span className="label-short">אוטומטי</span>
+              </button>
+            </div>
+          )}
           <nav className="category-nav" aria-label="סינון לפי קטגוריה">
             {TYPES.map((type) => (
               <button
@@ -2435,6 +2431,8 @@ export function App() {
         {activeType === "luggage" && (
           <LuggageView
             items={items}
+            outfits={outfits}
+            onOpenLook={setSelectedLook}
             suitcases={suitcases}
             activeId={activeSuitcaseId}
             onSelect={setActiveSuitcaseId}
@@ -2503,6 +2501,18 @@ export function App() {
             <button type="button" className="import-icon-button" onClick={exitSelectMode} aria-label="ביטול הבחירה"><X size={18} /></button>
           </div>
         </div>
+      )}
+
+      {packingLookId && (
+        <SuitcasePicker
+          suitcases={suitcases}
+          itemIds={[packingLookId]}
+          field="outfitIds"
+          onAdd={(id, ids) => addToSuitcase(id, ids, "outfitIds")}
+          onRemove={(id, ids) => removeFromSuitcase(id, ids, "outfitIds")}
+          onCreate={(title, ids) => createSuitcase(title, ids, "outfitIds")}
+          onClose={() => setPackingLookId(null)}
+        />
       )}
 
       {packingIds && (
@@ -2593,6 +2603,8 @@ export function App() {
           look={selectedLook}
           onClose={() => setSelectedLook(null)}
           onDelete={deleteOutfit}
+          suitcaseCount={suitcases.filter((s) => s.outfitIds?.includes(selectedLook.id)).length}
+          onPack={() => setPackingLookId(selectedLook.id)}
         />
       )}
 

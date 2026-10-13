@@ -291,3 +291,21 @@
   .select-toggle { height: 40px; padding: 0 12px; }
   .piece-count { white-space: nowrap; }
 }
+
+/* Looks actions: their own row under the header */
+.looks-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.looks-actions > button { margin: 0; }
+@media (max-width: 520px) {
+  .looks-actions { flex-wrap: nowrap; gap: 6px; }
+  .looks-actions > button { flex: 1 1 0; min-width: 0; height: 40px; padding: 0 8px; font-size: 13px; white-space: nowrap; justify-content: center; }
+}
+
+/* Suitcase: add items or looks */
+.suitcase-add-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.suitcase-add-head h3 { margin: 0; }
+.suitcase-add-tabs { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.suitcase-add-tabs button { border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.suitcase-add-tabs button small { color: var(--muted); font-size: 11px; margin-inline-start: 4px; }
+.suitcase-add-tabs button.is-on { background: var(--ink); color: var(--paper); }
+.suitcase-add-tabs button.is-on small { color: inherit; opacity: .75; }
+.luggage-look-card .luggage-item-card__img-wrap img { object-fit: cover; }
