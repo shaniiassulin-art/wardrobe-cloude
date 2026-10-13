@@ -64,6 +64,7 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` |
 | `OPENAI_IMAGE_QUALITY` | `high` |
 | `OPENAI_LOOK_QUALITY` | `medium` (outfit looks) |
+| `OPENAI_MODELED_QUALITY` | `medium` (garment photographed on you) |
 | `PHOTOROOM_API_KEY` | Optional, enables the Photoroom catalog import |
 | `WARDROBE_DATA_DIR` | `data` |
 | `APP_PASSWORD` | Optional locally, required on Netlify |

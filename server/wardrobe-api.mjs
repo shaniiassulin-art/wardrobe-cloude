@@ -1902,7 +1902,7 @@ Respond in strict JSON format:
           const basePrompt = "Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.";
           if (key) {
             try {
-              bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
+              bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_MODELED_QUALITY", "medium"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
             } catch (modelError) {
               // Fail visibly so the user knows to fix their OpenAI account
               if (modelError.accountProblem) throw modelError;
@@ -2190,7 +2190,8 @@ Respond in strict JSON format:
               key,
               baseUrl: apiBaseUrl(),
               model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
-              quality: setting("OPENAI_IMAGE_QUALITY", "high"),
+              // Photos of a garment on the user default to medium quality (cheaper)
+              quality: setting("OPENAI_MODELED_QUALITY", "medium"),
               size: "1536x1024",
               images: [model, garment],
               prompt: basePrompt,
