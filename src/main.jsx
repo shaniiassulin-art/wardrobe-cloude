@@ -4,6 +4,7 @@ import { App } from "./App.jsx";
 import { AuthGate } from "./AuthGate.jsx";
 import "./styles.css";
 import "./wardrobe-ui.css";
+import "./soft-theme.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

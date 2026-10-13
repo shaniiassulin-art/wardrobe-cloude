@@ -503,7 +503,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         await api(`${API}/${job.id}/metadata`, { method: "PATCH", body: JSON.stringify({ metadata }) });
         const updated = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
         const garmentPath = `/api/import/library/import-${job.id}-garment.png`;
-        onGarmentApproved?.({ id: `import-${job.id}`, ...metadata, image: garmentPath, thumbnail: garmentPath, modeledImage: null, palette: [metadata.color, metadata.secondaryColor].filter(Boolean), importJobId: job.id });
+        onGarmentApproved?.({ id: `import-${job.id}`, ...metadata, image: garmentPath, thumbnail: garmentPath, modeledImage: null, originalImage: `/api/import/library/import-${job.id}-original.png`, palette: [metadata.color, metadata.secondaryColor].filter(Boolean), importJobId: job.id });
         if (updated.status === "complete") {
           const remainingJobs = jobs.filter((item) => item.id !== job.id);
           setJobs(remainingJobs);

@@ -1114,6 +1114,7 @@ const LONG_ROUTES = [
   { method: "POST", pattern: /^\/api\/import\/outfits\/generate$/ },
   { method: "POST", pattern: /^\/api\/import\/outfits\/auto-generate$/ },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/modeled$/i },
+  { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/regenerate$/i },
 ];
 
 /**
@@ -1822,6 +1823,9 @@ Respond in strict JSON format:
     const wId = job.wardrobeId || "user-shani";
     const id = `import-${job.id}`;
     const garmentName = `${id}-garment.png`;
+    const originalName = `${id}-original.png`;
+    const originalBytes = job.internal?.originalFile ? await store.getBytes(jobKey(job.id, job.internal.originalFile)) : null;
+    if (originalBytes) await store.setBytes(libraryKey(originalName), originalBytes);
     const garmentSource = job.stages.garment.assetUrl
       ? path.basename(new URL(job.stages.garment.assetUrl, "http://localhost").pathname)
       : `garment-${job.stages.garment.attempts}.png`;
@@ -1849,6 +1853,7 @@ Respond in strict JSON format:
       image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       modeledImage: modeledImage || existing?.modeledImage || null,
+      originalImage: originalBytes ? `${LIBRARY_ASSET_ROOT}/${originalName}` : existing?.originalImage || null,
       importJobId: job.id,
       wardrobeId: wId,
     };
@@ -2186,6 +2191,7 @@ Respond in strict JSON format:
         await Promise.all([
           store.delete(libraryKey(`${id}-garment.png`)).catch(() => {}),
           store.delete(libraryKey(`${id}-modeled.png`)).catch(() => {}),
+          store.delete(libraryKey(`${id}-original.png`)).catch(() => {}),
         ]);
         return json(200, { deleted: true, id });
       }
@@ -2205,6 +2211,53 @@ Respond in strict JSON format:
         };
         await saveImported(wId, records);
         return json(200, records[index]);
+      }
+      const wardrobeRegenerateMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/regenerate$/i);
+      if (wardrobeRegenerateMatch && request.method === "POST") {
+        const id = wardrobeRegenerateMatch[1];
+        const wId = resolveWardrobeId(request, url);
+        const input = await body(request);
+        const records = await loadImported(wId);
+        const record = records.find((item) => item.id === id);
+        if (!record) return json(404, { error: "Wardrobe item not found" });
+        const original = await store.getBytes(libraryKey(`${id}-original.png`));
+        if (!original) return json(409, { error: "לפריט הזה לא נשמרה התמונה המקורית (הוא נוסף לפני שהאפשרות הזו קיימת). כדי לעבד אותו מחדש צריך להעלות את התמונה שוב." });
+        const key = setting("OPENAI_API_KEY");
+        if (!key) return json(400, { error: "צריך מפתח של OpenAI כדי לעבד מחדש." });
+        const quality = ["low", "medium"].includes(input.quality) ? input.quality : "low";
+        const chromaKey = chooseChromaKey(record.color);
+        const direction = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 1200) : "";
+        const basePrompt = buildGarmentPrompt(record, chromaKey);
+        let bytes;
+        try {
+          bytes = await openAIEdit({
+            key,
+            baseUrl: apiBaseUrl(),
+            model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
+            quality,
+            size: "1024x1024",
+            images: [{ data: original, mime: "image/png", name: "original.png" }],
+            prompt: direction ? `${basePrompt}\nUser regeneration direction: ${direction}` : basePrompt,
+          });
+        } catch (error) {
+          return json(error.accountProblem ? 402 : 502, { error: error.message });
+        }
+        try {
+          bytes = await removeChromaBackground(bytes, chromaKey, { tolerance: 48 });
+        } catch {
+          bytes = (await processChromaBackground(bytes, chromaKey, { tolerance: 58 })).bytes;
+        }
+        await store.setBytes(libraryKey(`${id}-garment.png`), bytes);
+        // Re-read so edits made while the image was generating are kept
+        const latest = await loadImported(wId);
+        const latestRecord = latest.find((item) => item.id === id);
+        if (!latestRecord) return json(404, { error: "Wardrobe item not found" });
+        const stamp = Date.now();
+        latestRecord.image = `${LIBRARY_ASSET_ROOT}/${id}-garment.png?t=${stamp}`;
+        latestRecord.thumbnail = latestRecord.image;
+        latestRecord.catalogQuality = quality;
+        await saveImported(wId, latest);
+        return json(200, latestRecord);
       }
       const wardrobeModeledMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/modeled$/i);
       if (wardrobeModeledMatch && request.method === "POST") {

@@ -225,7 +225,7 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
           {showModeled ? "הבגד" : "עליי"}
         </button>
       )}
-      {item.name && <p className="gallery-item__name">{item.name}</p>}
+      {item.name && <p className="gallery-item__name">{item.name}{item.brand && <span className="gallery-item__brand"> · {item.brand}</span>}</p>}
     </div>
   );
 }
@@ -348,8 +348,18 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       <label className="field">
         <span>קטגוריה</span>
         <select value={draft.part} onChange={(event) => setDraft((current) => ({ ...current, part: event.target.value }))}>
-          {TYPES.slice(2).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+          {TYPES.filter((type) => !["all", "looks", "luggage"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
         </select>
+      </label>
+
+      <label className="field">
+        <span>מותג</span>
+        <input
+          value={draft.brand}
+          onChange={(event) => setDraft((current) => ({ ...current, brand: event.target.value }))}
+          placeholder="למשל: זארה"
+          autoComplete="off"
+        />
       </label>
 
       <fieldset className="color-field">
@@ -397,11 +407,36 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+  const [draft, setDraft] = useState({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [generatingModeled, setGeneratingModeled] = useState(false);
   const [modeledError, setModeledError] = useState("");
+  const [redoing, setRedoing] = useState(null);
+  const [redoError, setRedoError] = useState("");
+  const [redoPrompt, setRedoPrompt] = useState("");
+
+  // Redo the catalog photo from the original upload, at the chosen quality
+  const handleRedo = async (quality) => {
+    setRedoing(quality);
+    setRedoError("");
+    try {
+      const res = await fetch(`/api/import/wardrobe/${item.id}/regenerate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quality, prompt: redoPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "לא ניתן לעבד מחדש כרגע");
+      onModeledGenerated?.(data);
+      setActivePhotoTab("flat");
+      setRedoPrompt("");
+    } catch (err) {
+      setRedoError(err.message || "לא ניתן לעבד מחדש כרגע");
+    } finally {
+      setRedoing(null);
+    }
+  };
   const [activePhotoTab, setActivePhotoTab] = useState("flat");
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
   const hasModeledImage = Boolean(item.modeledImage);
@@ -432,12 +467,14 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     const normalizedTags = (tags) => tags.map((tag) => tag.trim()).filter(Boolean);
     return JSON.stringify({
       name: draft.name.trim(),
+      brand: (draft.brand || "").trim(),
       part: draft.part,
       color: draft.color?.toLowerCase() || null,
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
+      brand: (item.brand || "").trim(),
       part: item.part,
       color: item.color?.toLowerCase() || null,
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
@@ -486,20 +523,20 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     setSampling(null);
     setSampleStatus("");
     setPalette(item.palette || []);
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
     setActivePhotoTab("flat");
     setModeledError("");
   }, [item]);
 
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
     setSampling(null);
     setSampleStatus("");
     onClose();
   };
 
   const saveEditing = () => {
-    onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+    onSave({ ...item, ...draft, name: draft.name.trim(), brand: (draft.brand || "").trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
     setSampling(null);
     setSampleStatus("השינויים נשמרו.");
   };
@@ -549,7 +586,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     <aside className={`viewer item-sheet${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="פריט מלתחה נבחר">
       <header className="item-sheet__header">
         <div>
-          <p className="item-sheet__eyebrow">{TYPE_MAP[draft.part]?.singular || "פריט"}</p>
+          <p className="item-sheet__eyebrow">{[TYPE_MAP[draft.part]?.singular || "פריט", item.brand].filter(Boolean).join(" · ")}</p>
           <h2>{draft.name || type}</h2>
         </div>
         <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="סגור" ref={closeButtonRef}>
@@ -589,6 +626,36 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
         </button>
       </div>
       {modeledError && <p className="item-sheet__error" role="alert">{modeledError}</p>}
+
+      <section className="item-sheet__section item-sheet__redo" aria-labelledby="item-redo-title">
+        <h3 id="item-redo-title">לא מרוצה מהתמונה?</h3>
+        {item.originalImage ? (
+          <>
+            <p className="item-sheet__note">התמונה תיווצר מחדש מהתמונה המקורית שהעלית.</p>
+            <textarea
+              className="item-sheet__textarea"
+              rows={2}
+              value={redoPrompt}
+              onChange={(event) => setRedoPrompt(event.target.value)}
+              placeholder="אופציונלי: מה לתקן? למשל: לשמור על הכיס, צבע כהה יותר"
+              aria-label="הנחיות לעיבוד מחדש"
+            />
+            <div className="item-sheet__redo-actions">
+              <button type="button" className="secondary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("low")}>
+                {redoing === "low" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
+                <span>{redoing === "low" ? "מעבד..." : "עיבוד מחדש (כ-3 אג׳)"}</span>
+              </button>
+              <button type="button" className="primary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("medium")}>
+                {redoing === "medium" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
+                <span>{redoing === "medium" ? "מעבד..." : "איכות בינונית (כ-20 אג׳)"}</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="item-sheet__note">הפריט הזה נוסף לפני שהתחלנו לשמור את התמונה המקורית, ולכן אי אפשר לעבד אותו מחדש מכאן. אפשר להעלות את התמונה שלו שוב.</p>
+        )}
+        {redoError && <p className="item-sheet__error" role="alert">{redoError}</p>}
+      </section>
 
       <section className="item-sheet__section" aria-labelledby="item-details-title">
         <h3 id="item-details-title">פרטי הפריט</h3>
