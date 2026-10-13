@@ -122,12 +122,36 @@ async function downscalePng(blob, maxDimension = 1100) {
   return canvas.toDataURL("image/png");
 }
 
+function removeBackgroundInWorker(source, onProgress) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./background-removal.worker.js", import.meta.url), { type: "module" });
+    worker.onmessage = ({ data }) => {
+      if (data.type === "progress") return onProgress?.(data.key, data.current, data.total);
+      worker.terminate();
+      if (data.type === "done") resolve(data.blob);
+      else reject(new Error(data.message));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "background worker failed"));
+    };
+    worker.postMessage({ blob: source });
+  });
+}
+
 // Free import: the background is removed on this device. The model (~40MB) is
 // downloaded once from the library's CDN and cached by the browser.
 async function removeBackgroundInBrowser(imageDataUrl, onProgress) {
-  const { removeBackground } = await import("@imgly/background-removal");
   const source = await (await fetch(imageDataUrl)).blob();
-  const cutout = await removeBackground(source, { model: "isnet_quint8", output: { format: "image/png" }, progress: onProgress });
+  let cutout;
+  try {
+    cutout = await removeBackgroundInWorker(source, onProgress);
+  } catch (workerError) {
+    // Browsers without module workers: run on the page (it freezes while working)
+    console.warn("Background removal worker failed, running on the page:", workerError);
+    const { removeBackground } = await import("@imgly/background-removal");
+    cutout = await removeBackground(source, { model: "isnet_quint8", output: { format: "image/png" }, progress: onProgress });
+  }
   try { return await downscalePng(cutout); } catch { return blobToDataUrl(cutout); }
 }
 

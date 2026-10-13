@@ -6,6 +6,10 @@ import { responsiveImageApi } from "./scripts/responsive-image-api.mjs";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+    // The background-removal worker loads code-split chunks, which needs ES module workers
+    worker: {
+      format: "es",
+    },
     optimizeDeps: {
       include: ["react", "react-dom/client"],
     },
