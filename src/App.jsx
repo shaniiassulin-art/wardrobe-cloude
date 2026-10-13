@@ -54,6 +54,9 @@ function getItemSlotKey(item) {
   return "top";
 }
 
+// Examples shown in every "note to the AI" field
+const AI_NOTE_HINT = "למשל: שמלת מקסי, בגד גוף, חולצה קצרה, ללבוש פתוח";
+
 const TYPE_MAP = Object.fromEntries(TYPES.map((type) => [type.id, type]));
 const TYPE_ORDER = Object.fromEntries(TYPES.slice(1).map((type, index) => [type.id, index]));
 
@@ -441,17 +444,24 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
   const hasModeledImage = Boolean(item.modeledImage);
 
+  const [modeledPanelOpen, setModeledPanelOpen] = useState(false);
+  const [modeledNote, setModeledNote] = useState("");
+
   const handleGenerateModeled = async () => {
     setGeneratingModeled(true);
     setModeledError("");
     try {
       const res = await fetch(`/api/import/wardrobe/${item.id}/modeled`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: modeledNote }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "שגיאה ביצירת הדמיה על מודל");
       onModeledGenerated?.(data);
       setActivePhotoTab("modeled");
+      setModeledPanelOpen(false);
+      setModeledNote("");
     } catch (err) {
       setModeledError(err.message || "שגיאה ביצירת תמונה");
     } finally {
@@ -620,11 +630,31 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
           <MagicWand size={18} aria-hidden="true" />
           <span>לוק עם הפריט</span>
         </button>
-        <button type="button" onClick={handleGenerateModeled} disabled={generatingModeled}>
+        <button type="button" className={modeledPanelOpen ? "is-on" : ""} onClick={() => setModeledPanelOpen((open) => !open)} disabled={generatingModeled} aria-expanded={modeledPanelOpen}>
           {generatingModeled ? <ArrowClockwise size={18} className="spin" aria-hidden="true" /> : <User size={18} aria-hidden="true" />}
           <span>{generatingModeled ? "יוצר..." : hasModeledImage ? "יצירה מחדש עליי" : "יצירה עליי"}</span>
         </button>
       </div>
+      {modeledPanelOpen && (
+        <div className="item-sheet__panel">
+          <label className="item-sheet__label" htmlFor={`modeled-note-${item.id}`}>הערה ל-AI <span>אופציונלי</span></label>
+          <textarea
+            id={`modeled-note-${item.id}`}
+            className="item-sheet__textarea"
+            rows={2}
+            value={modeledNote}
+            onChange={(event) => setModeledNote(event.target.value)}
+            placeholder={AI_NOTE_HINT}
+          />
+          <div className="item-sheet__redo-actions">
+            <button type="button" className="primary-button" onClick={handleGenerateModeled} disabled={generatingModeled}>
+              {generatingModeled ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <User size={15} aria-hidden="true" />}
+              <span>{generatingModeled ? "יוצר..." : hasModeledImage ? "יצירה מחדש עליי" : "יצירה עליי"}</span>
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setModeledPanelOpen(false)} disabled={generatingModeled}>ביטול</button>
+          </div>
+        </div>
+      )}
       {modeledError && <p className="item-sheet__error" role="alert">{modeledError}</p>}
 
       <section className="item-sheet__section item-sheet__redo" aria-labelledby="item-redo-title">
@@ -637,8 +667,8 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
               rows={2}
               value={redoPrompt}
               onChange={(event) => setRedoPrompt(event.target.value)}
-              placeholder="אופציונלי: מה לתקן? למשל: לשמור על הכיס, צבע כהה יותר"
-              aria-label="הנחיות לעיבוד מחדש"
+              placeholder={`הערה ל-AI (אופציונלי). ${AI_NOTE_HINT}`}
+              aria-label="הערה ל-AI לעיבוד מחדש"
             />
             <div className="item-sheet__redo-actions">
               <button type="button" className="secondary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("low")}>
@@ -1302,12 +1332,12 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
         {/* OUTFIT NOTES */}
         <section style={{ marginBottom: "16px" }}>
           <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink)", marginBottom: "6px" }}>
-            הערות סטיילינג (אופציונלי)
+            הערה ל-AI (אופציונלי)
           </label>
           <textarea
             value={outfitNotes}
             onChange={(e) => setOutfitNotes(e.target.value)}
-            placeholder="לדוגמה: להשאיר את הז'קט פתוח, להכניס חולצה למכנסיים..."
+            placeholder={`${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
             rows={2}
             style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid var(--line)", borderRadius: "3px", background: "transparent", color: "var(--ink)", resize: "vertical", fontFamily: "inherit" }}
           />
@@ -1477,6 +1507,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
 function AutoOutfitsModal({ onClose, onCreated }) {
   const [count, setCount] = useState(1);
   const [occasion, setOccasion] = useState("everyday");
+  const [notes, setNotes] = useState("");
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
@@ -1490,6 +1521,7 @@ function AutoOutfitsModal({ onClose, onCreated }) {
         body: JSON.stringify({
           count,
           occasion,
+          notes: notes.trim() || undefined,
           settingDirection: "a quiet warm-stone courtyard with restrained greenery",
         }),
       });
@@ -1555,6 +1587,20 @@ function AutoOutfitsModal({ onClose, onCreated }) {
             <option value="weekend">סוף שבוע</option>
             <option value="night-out">ערב</option>
           </select>
+        </div>
+
+        <div style={{ marginBottom: "20px" }}>
+          <label htmlFor="auto-looks-note" style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "var(--muted)", marginBottom: "8px" }}>
+            הערה ל-AI (אופציונלי)
+          </label>
+          <textarea
+            id="auto-looks-note"
+            className="item-sheet__textarea"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder={AI_NOTE_HINT}
+          />
         </div>
 
         {error && <p style={{ color: "var(--accent)", fontSize: "13px", margin: "0 0 16px" }}>{error}</p>}

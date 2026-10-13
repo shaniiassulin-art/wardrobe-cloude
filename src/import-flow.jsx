@@ -288,8 +288,8 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
           </>
         ) : <p className="import-card__detail">אישור התמונה יוסיף אותה למלתחה, או שניתן ליצור מחדש עם הנחיות מדויקות.</p>}
         {!isCrop && job.mode !== "free" && <div className="import-field import-regenerate-field">
-          <label htmlFor={`regenerate-${job.id}-${stage}`}>הנחיות ליצירה מחדש <span>אופציונלי</span></label>
-          <textarea id={`regenerate-${job.id}-${stage}`} rows="2" value={regenPrompt} onChange={(event) => setRegenPrompt(event.target.value)} placeholder="לדוגמה: לשמור על הרוכסן המקורי ולהסיר את התווית" />
+          <label htmlFor={`regenerate-${job.id}-${stage}`}>הערה ל-AI <span>אופציונלי</span></label>
+          <textarea id={`regenerate-${job.id}-${stage}`} rows="2" value={regenPrompt} onChange={(event) => setRegenPrompt(event.target.value)} placeholder="למשל: שמלת מקסי, בגד גוף, לשמור על הרוכסן" />
         </div>}
         <div className="import-actions">
           <button className="import-button" disabled={busy} onClick={() => onAction("reject")}><Trash size={14} /> דחייה</button>

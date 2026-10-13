@@ -1532,7 +1532,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
     return outfitRecord;
   }
 
-  async function autoGenerateOutfits({ count = 1, occasion = "everyday", season = "", settingDirection = "", wardrobeId = "user-shani" } = {}) {
+  async function autoGenerateOutfits({ count = 1, occasion = "everyday", season = "", settingDirection = "", notes = "", wardrobeId = "user-shani" } = {}) {
     const targetCount = Math.max(1, Math.min(6, Number(count) || 1));
     const records = await loadImported(wardrobeId);
     if (!records.length) {
@@ -1649,6 +1649,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
         garmentIds: combo.garmentIds,
         occasion: combo.occasion,
         settingDirection: combo.settingDirection,
+        notes: typeof notes === "string" ? notes.slice(0, 600) : "",
         save: true,
         wardrobeId,
       });
@@ -2263,6 +2264,8 @@ Respond in strict JSON format:
       if (wardrobeModeledMatch && request.method === "POST") {
         const id = wardrobeModeledMatch[1];
         const wId = resolveWardrobeId(request, url);
+        // Optional note from the user, e.g. "maxi dress" or "bodysuit"
+        const modeledNote = String((await body(request)).notes || "").trim().slice(0, 600);
         const records = await loadImported(wId);
         const record = records.find((item) => item.id === id);
         if (!record) return json(404, { error: "Wardrobe item not found" });
@@ -2294,7 +2297,8 @@ Respond in strict JSON format:
               quality: setting("OPENAI_MODELED_QUALITY", "medium"),
               size: "1536x1024",
               images: [model, garment],
-              prompt: basePrompt,
+              prompt: modeledNote ? `${basePrompt}
+User direction about this garment and how it is worn: ${modeledNote}` : basePrompt,
             });
           } catch (modelError) {
             if (modelError.accountProblem) return json(402, { error: modelError.message });

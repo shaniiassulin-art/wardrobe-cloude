@@ -177,3 +177,17 @@
   .category-nav { border-radius: 18px; }
   .category-nav button { padding: 8px 12px; font-size: 12px; }
 }
+
+/* "Note to the AI" panel in the item view */
+.item-sheet__panel {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.item-sheet__label { font-size: 13px; font-weight: 600; }
+.item-sheet__label span { color: var(--muted); font-weight: 400; }
+.item-sheet__panel .item-sheet__textarea { margin-bottom: 0; }
