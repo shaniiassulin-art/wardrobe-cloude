@@ -2351,6 +2351,19 @@ export function App() {
               </button>
             </div>
           </div>
+          <nav className="category-nav" aria-label="סינון לפי קטגוריה">
+            {TYPES.map((type) => (
+              <button
+                key={type.id}
+                type="button"
+                className={activeType === type.id ? "active" : ""}
+                onClick={() => chooseType(type.id)}
+                aria-pressed={activeType === type.id}
+              >
+                {type.label}
+              </button>
+            ))}
+          </nav>
           {activeType === "looks" && (
             <div className="looks-actions">
               <button type="button" className="create-look-btn" onClick={() => openLookBuilder([], "flatlay")}>
@@ -2366,19 +2379,6 @@ export function App() {
               </button>
             </div>
           )}
-          <nav className="category-nav" aria-label="סינון לפי קטגוריה">
-            {TYPES.map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                className={activeType === type.id ? "active" : ""}
-                onClick={() => chooseType(type.id)}
-                aria-pressed={activeType === type.id}
-              >
-                {type.label}
-              </button>
-            ))}
-          </nav>
           {activeType !== "looks" && activeType !== "luggage" && !!items.length && (
             <WardrobeFilters items={items} filters={filters} onChange={setFilters} />
           )}
