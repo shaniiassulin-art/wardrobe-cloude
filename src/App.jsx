@@ -5,6 +5,7 @@ import { OptimizedImage } from "./OptimizedImage.jsx";
 import { fittedImage, toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
+import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilters.jsx";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
 // Page heading whose words fade in from a soft blur
@@ -55,7 +56,7 @@ function getItemSlotKey(item) {
 }
 
 // How an item's catalog photo was made
-const QUALITY_LABELS = { low: "זול", medium: "בינוני", high: "איכות גבוהה", free: "חינמי", photoroom: "פוטורום" };
+const QUALITY_LABELS = { low: "זול", medium: "בינוני", high: "איכות גבוהה", free: "חינמי" };
 const qualityLabel = (value) => QUALITY_LABELS[value] || null;
 
 // Examples shown in every "note to the AI" field
@@ -1688,6 +1689,7 @@ export function App() {
   const [builderMode, setBuilderMode] = useState("flatlay");
   const [autoModalOpen, setAutoModalOpen] = useState(false);
   const [builderInitialItems, setBuilderInitialItems] = useState([]);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState([]);
   const [packingIds, setPackingIds] = useState(null);
@@ -2065,13 +2067,13 @@ export function App() {
 
   const visibleItems = useMemo(() => {
     if (activeType === "looks" || activeType === "luggage") return [];
-    const filtered = activeType === "all"
+    const filtered = (activeType === "all"
       ? items
       : items.filter((item) => {
           if (activeType === "dress") return item.part === "dress" || item.part === "wholebody";
           if (activeType === "wholebody_up") return item.part === "wholebody_up" || item.part === "outerwear" || item.part === "jacket";
           return item.part === activeType;
-        });
+        })).filter((item) => matchesFilters(item, filters));
     return [...filtered].sort((a, b) => {
       if (activeType === "all") {
         const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
@@ -2079,7 +2081,7 @@ export function App() {
       }
       return a.id.localeCompare(b.id);
     });
-  }, [activeType, items]);
+  }, [activeType, items, filters]);
 
   const chooseType = (typeId) => {
     setActiveType(typeId);
@@ -2361,6 +2363,9 @@ export function App() {
               </button>
             ))}
           </nav>
+          {activeType !== "looks" && activeType !== "luggage" && !!items.length && (
+            <WardrobeFilters items={items} filters={filters} onChange={setFilters} />
+          )}
         </header>
 
         {error && <p className="status error">{error}</p>}
@@ -2431,6 +2436,16 @@ export function App() {
               <p className="empty-wardrobe-text">
                 העלו תמונות של פריטי לבוש כדי להתחיל לבנות את המלתחה.
               </p>
+            </div>
+          </div>
+        )}
+
+        {activeType !== "looks" && activeType !== "luggage" && !!items.length && !visibleItems.length && (
+          <div className="empty-wardrobe-container">
+            <div className="empty-wardrobe-card">
+              <h2 className="empty-wardrobe-title">אין פריטים שמתאימים</h2>
+              <p className="empty-wardrobe-text">נסי להסיר חלק מהסינון או לבחור קטגוריה אחרת.</p>
+              <button type="button" className="secondary-button" onClick={() => setFilters(EMPTY_FILTERS)}>ניקוי הסינון</button>
             </div>
           </div>
         )}

@@ -946,53 +946,6 @@ export function checkApiKey(key, service) {
   throw Object.assign(new Error(`המפתח של ${service} שמוגדר ב-Netlify לא תקין: יש בו נקודות או תווים שלא שייכים למפתח. כנראה הועתק המפתח המוסתר (••••). צריך ליצור מפתח חדש, להעתיק אותו מיד כשהוא מוצג, ולעדכן אותו ב-Netlify.`), { accountProblem: true, status: 400 });
 }
 
-// Photoroom "Ghost Mannequin": rebuilds one garment as a clean catalog shot on a
-// transparent background. Keys starting with "sandbox_" are free but watermarked.
-export function photoroomError(status, result = {}) {
-  const message = result.error?.message || result.detail || result.message || `Photoroom request failed (${status})`;
-  if (status === 401) return Object.assign(new Error("המפתח של פוטורום לא תקין. צריך לעדכן אותו בהגדרות של Netlify."), { accountProblem: true });
-  if (status === 402 || status === 403) return Object.assign(new Error("נגמרו הקרדיטים בפוטורום, או שהמסלול לא כולל את כלי הבגדים (צריך מסלול Plus)."), { accountProblem: true });
-  if (status === 429) return new Error("פוטורום עמוס כרגע או שהגעת למגבלה היומית. נסו שוב מאוחר יותר.");
-  return new Error(`פוטורום: ${message}`);
-}
-
-async function photoroomGhostMannequin({ key, baseUrl, image }) {
-  const form = new FormData();
-  form.append("imageFile", new Blob([image], { type: "image/png" }), "garment.png");
-  form.set("ghostMannequin.mode", "ai.auto");
-  form.set("removeBackground", "true");
-  form.set("export.format", "png");
-  const response = await fetch(`${baseUrl}/v2/edit`, { method: "POST", headers: { "x-api-key": checkApiKey(key, "פוטורום") }, body: form });
-  if (!response.ok) throw photoroomError(response.status, await response.json().catch(() => ({})));
-  return Buffer.from(await response.arrayBuffer());
-}
-
-// Crops a transparent garment image to the garment itself (ignoring faint
-// specks) and centres it on a square with a uniform margin, so every item looks
-// the same size in the wardrobe whatever tool produced it.
-export async function fitGarmentToSquare(bytes, size = 1024, occupancy = 0.9) {
-  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  let minX = info.width, minY = info.height, maxX = -1, maxY = -1;
-  for (let index = 3, pixel = 0; index < data.length; index += 4, pixel += 1) {
-    if (data[index] < 24) continue;
-    const x = pixel % info.width;
-    const y = (pixel - x) / info.width;
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-  }
-  if (maxX < minX) return bytes;
-  const target = Math.round(size * occupancy);
-  const garment = await sharp(data, { raw: info })
-    .extract({ left: minX, top: minY, width: maxX - minX + 1, height: maxY - minY + 1 })
-    .resize(target, target, { fit: "inside" })
-    .png()
-    .toBuffer({ resolveWithObject: true });
-  return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-    .composite([{ input: garment.data, left: Math.floor((size - garment.info.width) / 2), top: Math.floor((size - garment.info.height) / 2) }])
-    .png()
-    .toBuffer();
-}
-
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   const validEditModel = (!model || model.includes("dall-e") || model.includes("mini")) ? "gpt-image-2" : model;
@@ -1791,8 +1744,6 @@ Respond in strict JSON format:
       hasApiKey,
       // Whether AI import is available; without it the app offers only the free mode
       hasOpenAIKey: Boolean(setting("OPENAI_API_KEY").trim()),
-      hasPhotoroomKey: Boolean(setting("PHOTOROOM_API_KEY").trim()),
-      photoroomSandbox: setting("PHOTOROOM_API_KEY").trim().startsWith("sandbox_"),
       hasModelReference: await store.exists(modelReferenceKey(wardrobeId)),
       modelReference: modelReferenceKey(wardrobeId),
     };
@@ -1855,8 +1806,8 @@ Respond in strict JSON format:
       thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       modeledImage: modeledImage || existing?.modeledImage || null,
       originalImage: originalBytes ? `${LIBRARY_ASSET_ROOT}/${originalName}` : existing?.originalImage || null,
-      // How the catalog photo was made: low / medium / high quality, or free / photoroom
-      catalogQuality: job.mode === "free" || job.mode === "photoroom"
+      // How the catalog photo was made: low / medium / high quality, or free
+      catalogQuality: job.mode === "free"
         ? job.mode
         : job.stages.garment.quality || (job.mode === "catalog" ? setting("OPENAI_CATALOG_QUALITY", "low") : setting("OPENAI_IMAGE_QUALITY", "high")),
       importJobId: job.id,
@@ -1903,14 +1854,7 @@ Respond in strict JSON format:
         const sourceFile = current.internal.originalFile;
         const original = { data: await requireBytes(jobKey(current.id, sourceFile), "Source image not found"), mime: "image/png", name: sourceFile };
         let bytes;
-        if (stageName === "garment" && current.mode === "photoroom") {
-          const photoroomKey = setting("PHOTOROOM_API_KEY").trim();
-          if (!photoroomKey) throw new Error("חסר מפתח של פוטורום. צריך להוסיף PHOTOROOM_API_KEY בהגדרות של Netlify.");
-          // The browser already isolated this garment; give Photoroom one item on plain white
-          const onWhite = await sharp(original.data).flatten({ background: "#ffffff" }).png().toBuffer();
-          const rebuilt = await photoroomGhostMannequin({ key: photoroomKey, baseUrl: setting("PHOTOROOM_API_BASE_URL", "https://image-api.photoroom.com").replace(/\/$/, ""), image: onWhite });
-          bytes = await frameTransparentGarment(rebuilt, 1024, 0.88);
-        } else if (stageName === "garment") {
+        if (stageName === "garment") {
           chromaKeyUsed = chooseChromaKey(current.metadata.color);
           // Catalog imports start cheap; the user can redo a bad one at medium quality
           const garmentQuality = current.stages.garment.quality || (current.mode === "catalog"
@@ -2526,9 +2470,7 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
         const normalizedImage = await normalizeImage(image.data);
         const key = setting("OPENAI_API_KEY");
         // Free mode: no AI detection; the browser removes the background itself
-        // Photoroom imports, like free ones, arrive as a garment the browser already cut out
-        const photoroom = input.mode === "photoroom";
-        const free = input.mode === "free" || photoroom;
+        const free = input.mode === "free";
         // Catalog: AI detection and a cheap AI product shot, without dressing it on the model
         const catalog = input.mode === "catalog";
         let detected = [];
@@ -2572,11 +2514,11 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
           await store.setBytes(jobKey(id, cropFile), croppedImage);
           const now = new Date().toISOString();
           const cropStage = { ...stageState(), status: free || catalog ? "approved" : "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
-          const job = { id, wardrobeId: wId, mode: photoroom ? "photoroom" : free ? "free" : catalog ? "catalog" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
+          const job = { id, wardrobeId: wId, mode: free ? "free" : catalog ? "catalog" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
           job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
           await saveJob(job); jobs.push(publicJob(job));
           // Catalog skips the crop review and starts the product shot right away
-          if (catalog || photoroom) await startStage(job.id, "garment");
+          if (catalog) await startStage(job.id, "garment");
         }
         return json(202, { jobs, noClothingDetected: jobs.length === 0, warning });
       }
@@ -2680,7 +2622,7 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
         job.stages[stageName].updatedAt = new Date().toISOString();
         const currentSetup = await setupStatus(job.wardrobeId);
         const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
-        const skipModeled = ["free", "catalog", "photoroom"].includes(job.mode) || !currentSetup.hasModelReference;
+        const skipModeled = ["free", "catalog"].includes(job.mode) || !currentSetup.hasModelReference;
         const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && !skipModeled;
         if (stageName === "garment" && decision === "approve" && skipModeled) {
           job.stages.modeled.status = "skipped";

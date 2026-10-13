@@ -167,7 +167,6 @@ async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
 const IMPORT_MODES = [
   { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה", note: "ה-AI מזהה כל בגד בתמונה ויוצר לו תמונת מוצר נקייה. עולה בערך 3 אגורות לבגד." },
   { id: "free", title: "חינמי", detail: "גזירה במכשיר, בלי עלות", note: "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז. בלי עלות." },
-  { id: "photoroom", title: "קטלוג פוטורום", detail: "בגד משוחזר כמו בחנות", note: "כל בגד מופרד במכשיר ואז פוטורום משחזר אותו כתמונת קטלוג מקצועית. עולה בערך 37 אגורות לבגד.", sandboxNote: "מצב ניסיון של פוטורום: חינם, עם סימן מים, עד 100 בגדים ביום." },
   { id: "ai", title: "AI מלא", detail: "קטלוג והלבשה על המודל", note: "תמונת מוצר באיכות גבוהה ותמונה של הבגד עלייך. עולה בערך 2 ש\"ח לבגד בחשבון OpenAI." },
 ];
 
@@ -177,7 +176,7 @@ function availableModes(setup) {
   return IMPORT_MODES.filter((option) => option.id === (setup?.hasOpenAIKey ? "catalog" : "free"));
 }
 
-function ImportModeToggle({ mode, modes, sandbox, onChange }) {
+function ImportModeToggle({ mode, modes, onChange }) {
   if (modes.length < 2) {
     return modes[0] ? <p className="import-mode-note">{modes[0].note}</p> : null;
   }
@@ -192,7 +191,7 @@ function ImportModeToggle({ mode, modes, sandbox, onChange }) {
           </button>
         ))}
       </div>
-      <p className="import-mode-note">{sandbox && current.sandboxNote ? current.sandboxNote : current.note}</p>
+      <p className="import-mode-note">{current.note}</p>
     </div>
   );
 }
@@ -411,7 +410,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     return () => clearInterval(timer);
   }, [jobs, refresh]);
 
-  const importFreeGarments = useCallback(async (imageDataUrl, fileName, provider = "free") => {
+  const importFreeGarments = useCallback(async (imageDataUrl, fileName) => {
     setRemovalStatus("מזהה את הבגדים בתמונה...");
     try {
       const garments = await extractGarmentsInBrowser(imageDataUrl, (key, current, total) => {
@@ -422,16 +421,9 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
       setRemovalStatus(garments.length > 1 ? `נמצאו ${garments.length} בגדים, שומר...` : "שומר את הבגד...");
       for (const garment of garments) {
         const metadata = { name: garment.name || baseName, ...(garment.part ? { part: garment.part } : {}), ...(garment.color ? { color: garment.color } : {}) };
-        let updated;
-        if (provider === "photoroom") {
-          // Send only this garment; the server has Photoroom rebuild it in the background
-          const created = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl: garment.dataUrl, mode: "photoroom", metadata }) });
-          updated = created.jobs[0];
-        } else {
-          const created = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: "free", metadata }) });
-          const job = created.jobs[0];
-          updated = await api(`${API}/${job.id}/stages/garment/upload`, { method: "POST", body: JSON.stringify({ imageDataUrl: garment.dataUrl }) });
-        }
+        const created = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: "free", metadata }) });
+        const job = created.jobs[0];
+        const updated = await api(`${API}/${job.id}/stages/garment/upload`, { method: "POST", body: JSON.stringify({ imageDataUrl: garment.dataUrl }) });
         setJobs((current) => [...current, updated]);
         setDrafts((current) => ({ ...current, [updated.id]: defaultDraft(updated) }));
         setSelectedReviewId((current) => current || updated.id);
@@ -464,8 +456,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         const file = await toBrowserImage(original);
         // Phone photos can exceed the hosted request size limit, so downscale first
         const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
-        if (importMode === "free" || importMode === "photoroom") {
-          await importFreeGarments(imageDataUrl, file.name, importMode);
+        if (importMode === "free") {
+          await importFreeGarments(imageDataUrl, file.name);
           continue;
         }
         const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: importMode, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
@@ -612,7 +604,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
             <button className="import-icon-button" type="button" onClick={() => setOpen(false)} aria-label="סגור"><X size={20} /></button>
           </header>
           {/* Always visible so the choice is never hidden below a long import list */}
-          {!setupRequired && <ImportModeToggle mode={importMode} modes={modes} sandbox={setup?.photoroomSandbox} onChange={chooseMode} />}
+          {!setupRequired && <ImportModeToggle mode={importMode} modes={modes} onChange={chooseMode} />}
           {liveStatus && (
             <div className="import-live-status" role="status" aria-live="polite">
               <div className="import-live-status__text"><SpinnerGap size={16} className="import-spinner" /> <span>{liveStatus}</span></div>
