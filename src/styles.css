@@ -2497,6 +2497,7 @@ button { font: inherit; }
   position: fixed;
   inset: 0;
   z-index: 200;
+  overflow: hidden;
   display: grid;
   place-items: center;
   padding: 56px 16px 24px;
@@ -2504,8 +2505,10 @@ button { font: inherit; }
   animation: overlay-in 160ms ease-out both;
 }
 .lightbox__image {
-  max-width: min(100%, 1100px);
-  max-height: 100%;
+  width: auto;
+  height: auto;
+  max-width: min(calc(100vw - 32px), 1100px);
+  max-height: calc(100dvh - 96px);
   object-fit: contain;
   border-radius: 10px;
   background-color: #f6f3ee;

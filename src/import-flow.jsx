@@ -265,9 +265,17 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
   const secondaryValid = !draft.secondaryColor || HEX_COLOR.test(draft.secondaryColor);
   return (
     <div className="import-editor">
-      <button type="button" className="import-editor__zoom" onClick={() => onZoom?.(asset)} aria-label="הגדלת התמונה">
-        <img className="import-editor__preview" src={asset} alt={isCrop ? "גזיר פריט" : isGarment ? "בגד מחולץ" : "תמונת מודל"} />
-      </button>
+      <div className="import-editor__media">
+        <button type="button" className="import-editor__zoom" onClick={() => onZoom?.(asset)} aria-label="הגדלת התמונה">
+          <img className="import-editor__preview" src={asset} alt={isCrop ? "גזיר פריט" : isGarment ? "בגד מחולץ" : "תמונת מודל"} />
+        </button>
+        {isGarment && job.stages.crop?.assetUrl && (
+          <button type="button" className="import-editor__source" onClick={() => onZoom?.(job.stages.crop.assetUrl)} aria-label="הגדלת התמונה המקורית">
+            <img src={job.stages.crop.assetUrl} alt="" />
+            <span>המקור שנשלח לעיבוד</span>
+          </button>
+        )}
+      </div>
       <div className="import-fields">
         <p className="import-editor__stage">{isCrop ? "פריט שזוהה" : isGarment ? "תמונת בגד" : "הדמיה על מודל"}</p>
         {isCrop ? <p className="import-card__detail">ודאו שהגזיר מכיל את הפריט המלא. אישור יתחיל חילוץ רקע נקי.</p> : isGarment ? (
@@ -557,6 +565,13 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && (reviewStageFor(job) || hasCleanupFailure(job)));
   const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || jobs.find((job) => hasCleanupFailure(job)) || active;
   const reviewStage = reviewJob ? reviewStageFor(reviewJob) : null;
+  const reviewable = jobs.filter((job) => reviewStageFor(job) || hasCleanupFailure(job));
+  const reviewIndex = reviewable.findIndex((job) => job.id === reviewJob?.id);
+  const goToReview = (step) => {
+    if (!reviewable.length) return;
+    const next = reviewable[(Math.max(0, reviewIndex) + step + reviewable.length) % reviewable.length];
+    setSelectedReviewId(next.id);
+  };
   const progress = 0;
   const hasImportActivity = Boolean(jobs.length || notice || setupRequired);
 
@@ -635,6 +650,13 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                 </div>
                 {activeStatus?.tone === "processing" && <div className="import-progress__track"><div className="import-progress__bar" style={{ "--import-progress": `${progress}%` }} /></div>}
               </div>
+              {reviewable.length > 1 && reviewIndex >= 0 && (
+                <nav className="import-review-nav" aria-label="מעבר בין פריטים לבדיקה">
+                  <button type="button" className="import-button" onClick={() => goToReview(-1)}>› הקודם</button>
+                  <span>פריט {reviewIndex + 1} מתוך {reviewable.length}</span>
+                  <button type="button" className="import-button" onClick={() => goToReview(1)}>הבא ‹</button>
+                </nav>
+              )}
               {reviewJob && reviewStage ? <ReviewEditor onZoom={setZoomSrc} job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} regenPrompt={regenerationPrompts[`${reviewJob.id}:${reviewStage}`] || ""} setRegenPrompt={(prompt) => setRegenerationPrompts((current) => ({ ...current, [`${reviewJob.id}:${reviewStage}`]: prompt }))} busy={busyId === reviewJob.id} onAction={(action, prompt, quality) => perform(reviewJob, reviewStage, action, prompt, quality)} /> : reviewJob && hasCleanupFailure(reviewJob) ? <CleanupEditor job={reviewJob} tolerance={cleanupTolerances[reviewJob.id] ?? reviewJob.stages.garment.cleanupTolerance ?? 46} setTolerance={(tolerance) => setCleanupTolerances((current) => ({ ...current, [reviewJob.id]: tolerance }))} busy={busyId === reviewJob.id} onPreview={(tolerance) => performCleanup(reviewJob, "preview", tolerance)} onAccept={() => performCleanup(reviewJob, "accept")} /> : null}
               <div className="import-card-list">
                 {jobs.map((job) => {
@@ -642,7 +664,11 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                   const itemName = drafts[job.id]?.name || job.metadata?.name || "פריט חדש";
                   const failedStage = job.stages?.garment?.status === "failed" ? "garment" : job.stages?.modeled?.status === "failed" ? "modeled" : null;
                   return (
-                    <article className={`import-card is-${status.tone}${reviewJob?.id === job.id ? " is-selected" : ""}`} key={job.id}>
+                    <article
+                      className={`import-card is-${status.tone}${reviewJob?.id === job.id ? " is-selected" : ""}${status.tone === "ready" ? " is-reviewable" : ""}`}
+                      key={job.id}
+                      onClick={(event) => { if (status.tone === "ready" && !event.target.closest("button")) setSelectedReviewId(job.id); }}
+                    >
                       <button type="button" className="import-card__zoom" onClick={() => setZoomSrc(job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl)} aria-label={`הגדלת התמונה של ${itemName}`}>
                         <img className="import-card__image" src={job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl} alt="" />
                       </button>
@@ -651,7 +677,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                         <p className="import-card__detail import-card__detail--status" data-tone={status.tone}>{status.tone === "error" ? status.detail : status.text}</p>
                       </div>
                       <div className="import-card__actions">
-                        {status.tone === "ready" && <button className="import-icon-button" onClick={() => { setSelectedReviewId(job.id); setOpen(true); }} aria-label={`בדיקת ${itemName}`}><Check size={17} /></button>}
+                        {status.tone === "ready" && reviewJob?.id !== job.id && <button className="import-button" onClick={() => { setSelectedReviewId(job.id); setOpen(true); }} aria-label={`בדיקת ${itemName}`}><Check size={14} /> לבדיקה</button>}
+                        {status.tone === "ready" && reviewJob?.id === job.id && <span className="import-card__now">בבדיקה עכשיו</span>}
                         {failedStage && <button className="import-button import-card__retry" disabled={busyId === job.id} onClick={() => perform(job, failedStage, "regenerate", "")}><ArrowCounterClockwise size={14} /> ניסיון חוזר</button>}
                         <button className="import-icon-button import-card__delete" disabled={busyId === job.id} onClick={() => deleteJob(job)} aria-label={`מחק ${itemName}`}><Trash size={16} /></button>
                       </div>

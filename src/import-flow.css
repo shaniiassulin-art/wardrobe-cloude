@@ -337,5 +337,32 @@
 .import-editor__zoom,
 .import-card__zoom { display: block; border: 0; padding: 0; background: transparent; cursor: zoom-in; }
 .import-editor__zoom { width: 100%; }
+.import-editor__media { display: grid; gap: 8px; }
+.import-editor__source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--import-line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--import-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: zoom-in;
+}
+.import-editor__source img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+.import-review-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.import-card.is-reviewable { cursor: pointer; }
+.import-card.is-selected { outline: 2px solid var(--import-ink); outline-offset: -2px; }
+.import-card__now { font-size: 12px; font-weight: 600; color: var(--import-ink); white-space: nowrap; }
 .import-editor__zoom:focus-visible,
 .import-card__zoom:focus-visible { outline: 2px solid var(--import-ink); outline-offset: 2px; }
