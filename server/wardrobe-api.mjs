@@ -185,6 +185,43 @@ function removeKeyedSpill(data, index, keyedChannels, neutralLevel) {
   }
 }
 
+// Pixels within `radius` of a fully transparent pixel. Chroma spill only happens
+// at the garment edge, so despill is limited to this band; the garment interior
+// keeps its true colour (despilling it turned navy and blue garments grey-teal).
+function edgeBand(data, width, height, radius = 4) {
+  const clear = new Uint8Array(width * height);
+  for (let pixel = 0; pixel < clear.length; pixel += 1) clear[pixel] = data[pixel * 4 + 3] === 0 ? 1 : 0;
+  const rows = new Uint8Array(clear.length);
+  for (let y = 0; y < height; y += 1) {
+    let last = -Infinity;
+    for (let x = 0; x < width; x += 1) { if (clear[y * width + x]) last = x; if (x - last <= radius) rows[y * width + x] = 1; }
+    last = Infinity;
+    for (let x = width - 1; x >= 0; x -= 1) { if (clear[y * width + x]) last = x; if (last - x <= radius) rows[y * width + x] = 1; }
+  }
+  const band = new Uint8Array(clear.length);
+  for (let x = 0; x < width; x += 1) {
+    let last = -Infinity;
+    for (let y = 0; y < height; y += 1) { if (rows[y * width + x]) last = y; if (y - last <= radius) band[y * width + x] = 1; }
+    last = Infinity;
+    for (let y = height - 1; y >= 0; y -= 1) { if (rows[y * width + x]) last = y; if (last - y <= radius) band[y * width + x] = 1; }
+  }
+  return band;
+}
+
+function despillEdges(data, width, height, keyedChannels, neutralChannels, { fadeAlpha = false } = {}) {
+  const band = edgeBand(data, width, height);
+  for (let pixel = 0, index = 0; index < data.length; pixel += 1, index += 4) {
+    if (data[index + 3] === 0 || !band[pixel]) continue;
+    const keyedLevel = keyedChannels.reduce((total, channel) => total + data[index + channel], 0) / keyedChannels.length;
+    const neutralLevel = neutralChannels.reduce((total, channel) => total + data[index + channel], 0) / neutralChannels.length;
+    const spill = Math.max(0, keyedLevel - neutralLevel);
+    if (spill <= 0) continue;
+    if (fadeAlpha) data[index + 3] = Math.round(data[index + 3] * Math.max(0, 1 - (Math.max(0, spill - 4) / 150)));
+    removeKeyedSpill(data, index, keyedChannels, neutralLevel);
+    if (data[index + 3] <= 8) data.fill(0, index, index + 4);
+  }
+}
+
 export async function processChromaBackground(bytes, key, options = {}) {
   const tolerance = cleanupTolerance(options.tolerance);
   const feather = 80;
@@ -199,48 +236,18 @@ export async function processChromaBackground(bytes, key, options = {}) {
       + ((data[index + 2] - target[2]) ** 2),
     );
     if (distance <= tolerance) {
-      data[index] = 0;
-      data[index + 1] = 0;
-      data[index + 2] = 0;
-      data[index + 3] = 0;
-    } else {
-      if (distance < tolerance + feather) data[index + 3] = Math.round(data[index + 3] * ((distance - tolerance) / feather));
-      const keyedLevel = keyedChannels.reduce((total, channel) => total + data[index + channel], 0) / keyedChannels.length;
-      const neutralLevel = neutralChannels.reduce((total, channel) => total + data[index + channel], 0) / neutralChannels.length;
-      const spill = Math.max(0, keyedLevel - neutralLevel);
-      if (spill > 0) {
-        const spillAlpha = Math.max(0, 1 - (Math.max(0, spill - 4) / 150));
-        data[index + 3] = Math.round(data[index + 3] * spillAlpha);
-        removeKeyedSpill(data, index, keyedChannels, neutralLevel);
-      }
-      if (data[index + 3] <= 8) {
-        data[index] = 0;
-        data[index + 1] = 0;
-        data[index + 2] = 0;
-        data[index + 3] = 0;
-      }
+      data.fill(0, index, index + 4);
+    } else if (distance < tolerance + feather) {
+      data[index + 3] = Math.round(data[index + 3] * ((distance - tolerance) / feather));
+      if (data[index + 3] <= 8) data.fill(0, index, index + 4);
     }
   }
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index + 3] === 0) continue;
-    const keyedLevel = keyedChannels.reduce((total, channel) => total + data[index + channel], 0) / keyedChannels.length;
-    const neutralLevel = neutralChannels.reduce((total, channel) => total + data[index + channel], 0) / neutralChannels.length;
-    const residualSpill = Math.max(0, keyedLevel - neutralLevel);
-    if (residualSpill > 0) {
-      removeKeyedSpill(data, index, keyedChannels, neutralLevel);
-    }
-  }
+  despillEdges(data, info.width, info.height, keyedChannels, neutralChannels, { fadeAlpha: true });
+  despillEdges(data, info.width, info.height, keyedChannels, neutralChannels);
   const keyedOutput = await sharp(data, { raw: info }).png().toBuffer();
   const framedOutput = await frameTransparentGarment(keyedOutput);
   const { data: framedData, info: framedInfo } = await sharp(framedOutput).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  for (let index = 0; index < framedData.length; index += 4) {
-    if (framedData[index + 3] === 0) continue;
-    const keyedLevel = keyedChannels.reduce((total, channel) => total + framedData[index + channel], 0) / keyedChannels.length;
-    const neutralLevel = neutralChannels.reduce((total, channel) => total + framedData[index + channel], 0) / neutralChannels.length;
-    const residualSpill = Math.max(0, keyedLevel - neutralLevel);
-    if (residualSpill <= 0) continue;
-    removeKeyedSpill(framedData, index, keyedChannels, neutralLevel);
-  }
+  despillEdges(framedData, framedInfo.width, framedInfo.height, keyedChannels, neutralChannels);
   const output = await sharp(framedData, { raw: framedInfo }).png().toBuffer();
   const verification = await verifyNoChromaSpill(output, key);
   return { bytes: output, verification, tolerance };
@@ -292,11 +299,13 @@ async function verifyNoChromaSpill(bytes, key) {
   const target = [1, 3, 5].map((offset) => Number.parseInt(key.slice(offset, offset + 2), 16));
   const keyedChannels = target.map((channel, index) => channel > 200 ? index : null).filter((index) => index !== null);
   const neutralChannels = target.map((channel, index) => channel < 55 ? index : null).filter((index) => index !== null);
-  const { data } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  // Only the edge band can carry spill; interior colours are the garment itself
+  const band = edgeBand(data, info.width, info.height);
   let contaminatedPixels = 0;
   let maxSpill = 0;
   for (let index = 0; index < data.length; index += 4) {
-    if (data[index + 3] === 0) continue;
+    if (data[index + 3] === 0 || !band[index / 4]) continue;
     const keyedLevel = keyedChannels.reduce((total, channel) => total + data[index + channel], 0) / keyedChannels.length;
     const neutralLevel = neutralChannels.reduce((total, channel) => total + data[index + channel], 0) / neutralChannels.length;
     const spill = Math.max(0, keyedLevel - neutralLevel);
@@ -1933,7 +1942,8 @@ Respond in strict JSON format:
             return;
           }
           const model = { data: modelData, mime: "image/png", name: "model.png" };
-          const basePrompt = "Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.";
+          const garmentColour = current.metadata?.color ? ` The garment colour must stay exactly ${current.metadata.color}${current.metadata.secondaryColor ? ` with ${current.metadata.secondaryColor}` : ""}; do not recolour, tint, or restyle it.` : "";
+          const basePrompt = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail.${garmentColour} Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
           if (key) {
             try {
               bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_MODELED_QUALITY", "medium"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
@@ -2210,7 +2220,7 @@ Respond in strict JSON format:
 
         const model = { data: modelData, mime: "image/png", name: "model.png" };
         const garment = { data: garmentData, mime: "image/png", name: "garment.png" };
-        const basePrompt = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail (${record.name}, ${record.part}). Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
+        const basePrompt = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail (${record.name}, ${record.part}). The garment colour must stay exactly ${record.color || "as shown in Image 2"}${record.secondaryColor ? ` with ${record.secondaryColor}` : ""}; do not recolour, tint, or restyle it. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
 
         let bytes;
         if (!key) {
