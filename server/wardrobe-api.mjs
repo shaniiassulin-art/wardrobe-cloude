@@ -930,6 +930,27 @@ export function openAIError(status, result = {}, fallback = "OpenAI request fail
   return Object.assign(new Error(message), { accountProblem });
 }
 
+// Photoroom "Ghost Mannequin": rebuilds one garment as a clean catalog shot on a
+// transparent background. Keys starting with "sandbox_" are free but watermarked.
+export function photoroomError(status, result = {}) {
+  const message = result.error?.message || result.detail || result.message || `Photoroom request failed (${status})`;
+  if (status === 401) return Object.assign(new Error("המפתח של פוטורום לא תקין. צריך לעדכן אותו בהגדרות של Netlify."), { accountProblem: true });
+  if (status === 402 || status === 403) return Object.assign(new Error("נגמרו הקרדיטים בפוטורום, או שהמסלול לא כולל את כלי הבגדים (צריך מסלול Plus)."), { accountProblem: true });
+  if (status === 429) return new Error("פוטורום עמוס כרגע או שהגעת למגבלה היומית. נסו שוב מאוחר יותר.");
+  return new Error(`פוטורום: ${message}`);
+}
+
+async function photoroomGhostMannequin({ key, baseUrl, image }) {
+  const form = new FormData();
+  form.append("imageFile", new Blob([image], { type: "image/png" }), "garment.png");
+  form.set("ghostMannequin.mode", "ai.auto");
+  form.set("removeBackground", "true");
+  form.set("export.format", "png");
+  const response = await fetch(`${baseUrl}/v2/edit`, { method: "POST", headers: { "x-api-key": key }, body: form });
+  if (!response.ok) throw photoroomError(response.status, await response.json().catch(() => ({})));
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   const validEditModel = (!model || model.includes("dall-e") || model.includes("mini")) ? "gpt-image-2" : model;
@@ -1724,6 +1745,8 @@ Respond in strict JSON format:
       hasApiKey,
       // Whether AI import is available; without it the app offers only the free mode
       hasOpenAIKey: Boolean(setting("OPENAI_API_KEY").trim()),
+      hasPhotoroomKey: Boolean(setting("PHOTOROOM_API_KEY").trim()),
+      photoroomSandbox: setting("PHOTOROOM_API_KEY").trim().startsWith("sandbox_"),
       hasModelReference: await store.exists(modelReferenceKey(wardrobeId)),
       modelReference: modelReferenceKey(wardrobeId),
     };
@@ -1823,7 +1846,14 @@ Respond in strict JSON format:
         const sourceFile = stageName === "garment" && current.internal.cropFile ? current.internal.cropFile : current.internal.originalFile;
         const original = { data: await requireBytes(jobKey(current.id, sourceFile), "Source image not found"), mime: "image/png", name: sourceFile };
         let bytes;
-        if (stageName === "garment") {
+        if (stageName === "garment" && current.mode === "photoroom") {
+          const photoroomKey = setting("PHOTOROOM_API_KEY").trim();
+          if (!photoroomKey) throw new Error("חסר מפתח של פוטורום. צריך להוסיף PHOTOROOM_API_KEY בהגדרות של Netlify.");
+          // The browser already isolated this garment; give Photoroom one item on plain white
+          const onWhite = await sharp(original.data).flatten({ background: "#ffffff" }).png().toBuffer();
+          const rebuilt = await photoroomGhostMannequin({ key: photoroomKey, baseUrl: setting("PHOTOROOM_API_BASE_URL", "https://image-api.photoroom.com").replace(/\/$/, ""), image: onWhite });
+          bytes = await frameTransparentGarment(rebuilt, 1024, 0.88);
+        } else if (stageName === "garment") {
           chromaKeyUsed = chooseChromaKey(current.metadata.color);
           // Catalog imports only need a product shot, so they default to the cheapest quality
           const garmentQuality = current.mode === "catalog"
@@ -2322,7 +2352,9 @@ Respond in strict JSON format:
         const normalizedImage = await normalizeImage(image.data);
         const key = setting("OPENAI_API_KEY");
         // Free mode: no AI detection; the browser removes the background itself
-        const free = input.mode === "free";
+        // Photoroom imports, like free ones, arrive as a garment the browser already cut out
+        const photoroom = input.mode === "photoroom";
+        const free = input.mode === "free" || photoroom;
         // Catalog: AI detection and a cheap AI product shot, without dressing it on the model
         const catalog = input.mode === "catalog";
         let detected = [];
@@ -2366,11 +2398,11 @@ Respond in strict JSON format:
           await store.setBytes(jobKey(id, cropFile), croppedImage);
           const now = new Date().toISOString();
           const cropStage = { ...stageState(), status: free || catalog ? "approved" : "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
-          const job = { id, wardrobeId: wId, mode: free ? "free" : catalog ? "catalog" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
+          const job = { id, wardrobeId: wId, mode: photoroom ? "photoroom" : free ? "free" : catalog ? "catalog" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
           job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
           await saveJob(job); jobs.push(publicJob(job));
           // Catalog skips the crop review and starts the product shot right away
-          if (catalog) await startStage(job.id, "garment");
+          if (catalog || photoroom) await startStage(job.id, "garment");
         }
         return json(202, { jobs, noClothingDetected: jobs.length === 0, warning });
       }
@@ -2472,7 +2504,7 @@ Respond in strict JSON format:
         job.stages[stageName].updatedAt = new Date().toISOString();
         const currentSetup = await setupStatus(job.wardrobeId);
         const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
-        const skipModeled = job.mode === "free" || job.mode === "catalog" || !currentSetup.hasModelReference;
+        const skipModeled = ["free", "catalog", "photoroom"].includes(job.mode) || !currentSetup.hasModelReference;
         const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && !skipModeled;
         if (stageName === "garment" && decision === "approve" && skipModeled) {
           job.stages.modeled.status = "skipped";
