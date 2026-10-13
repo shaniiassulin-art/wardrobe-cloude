@@ -269,9 +269,9 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
         <button type="button" className="import-editor__zoom" onClick={() => onZoom?.(asset)} aria-label="הגדלת התמונה">
           <img className="import-editor__preview" src={asset} alt={isCrop ? "גזיר פריט" : isGarment ? "בגד מחולץ" : "תמונת מודל"} />
         </button>
-        {isGarment && job.stages.crop?.assetUrl && (
-          <button type="button" className="import-editor__source" onClick={() => onZoom?.(job.stages.crop.assetUrl)} aria-label="הגדלת התמונה המקורית">
-            <img src={job.stages.crop.assetUrl} alt="" />
+        {isGarment && job.originalAssetUrl && (
+          <button type="button" className="import-editor__source" onClick={() => onZoom?.(job.originalAssetUrl)} aria-label="הגדלת התמונה המקורית">
+            <img src={job.originalAssetUrl} alt="" />
             <span>המקור שנשלח לעיבוד</span>
           </button>
         )}

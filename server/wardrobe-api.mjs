@@ -147,7 +147,7 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   return `Use case: background-extraction
 Asset type: ecommerce catalog product cutout source
 
-Input image: The reference photograph shows the exact garment, either by itself or worn by a person. Use it only to identify and reconstruct the garment.
+Input image: The reference photograph shows the exact garment, either by itself or worn by a person. It may also show other garments, people, or objects; find the ${name} (${category}, ${primary}) and use only that garment to identify and reconstruct it.
 
 Primary request: Reconstruct ONLY the complete empty ${name} (${category}) as a clean, front-facing ecommerce catalog product photograph. If a wearer is present, remove them. Remove every other garment, object, and background element. Show the complete item naturally arranged and symmetrical, with no person, body, mannequin, or hanger visible.
 
@@ -1887,7 +1887,10 @@ Respond in strict JSON format:
       try {
         const outputName = `${stageName}-${stage.attempts}.png`;
         const key = setting("OPENAI_API_KEY");
-        const sourceFile = stageName === "garment" && current.internal.cropFile ? current.internal.cropFile : current.internal.originalFile;
+        // The full original photo is sent, not the detected crop: the vision model names
+        // garments well but its boxes are often off, which produced crops of the wrong area.
+        // The prompt names the exact garment to extract and to drop everything else.
+        const sourceFile = current.internal.originalFile;
         const original = { data: await requireBytes(jobKey(current.id, sourceFile), "Source image not found"), mime: "image/png", name: sourceFile };
         let bytes;
         if (stageName === "garment" && current.mode === "photoroom") {
