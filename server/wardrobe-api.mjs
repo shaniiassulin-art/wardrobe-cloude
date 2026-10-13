@@ -1855,6 +1855,10 @@ Respond in strict JSON format:
       thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       modeledImage: modeledImage || existing?.modeledImage || null,
       originalImage: originalBytes ? `${LIBRARY_ASSET_ROOT}/${originalName}` : existing?.originalImage || null,
+      // How the catalog photo was made: low / medium / high quality, or free / photoroom
+      catalogQuality: job.mode === "free" || job.mode === "photoroom"
+        ? job.mode
+        : job.stages.garment.quality || (job.mode === "catalog" ? setting("OPENAI_CATALOG_QUALITY", "low") : setting("OPENAI_IMAGE_QUALITY", "high")),
       importJobId: job.id,
       wardrobeId: wId,
     };
@@ -2188,6 +2192,8 @@ Respond in strict JSON format:
         const records = await loadImported(wId);
         const next = records.filter((record) => record.id !== id);
         if (next.length === records.length) return json(404, { error: "Wardrobe item not found" });
+        const pendingFile = records.find((record) => record.id === id)?.pendingVersion?.file;
+        if (pendingFile) await store.delete(libraryKey(pendingFile)).catch(() => {});
         await saveImported(wId, next);
         await Promise.all([
           store.delete(libraryKey(`${id}-garment.png`)).catch(() => {}),
@@ -2215,20 +2221,25 @@ Respond in strict JSON format:
       }
       const wardrobeRegenerateMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/regenerate$/i);
       if (wardrobeRegenerateMatch && request.method === "POST") {
+        // Creates a new version for the user to compare; the current photo is kept
         const id = wardrobeRegenerateMatch[1];
         const wId = resolveWardrobeId(request, url);
         const input = await body(request);
         const records = await loadImported(wId);
         const record = records.find((item) => item.id === id);
         if (!record) return json(404, { error: "Wardrobe item not found" });
-        const original = await store.getBytes(libraryKey(`${id}-original.png`));
-        if (!original) return json(409, { error: "לפריט הזה לא נשמרה התמונה המקורית (הוא נוסף לפני שהאפשרות הזו קיימת). כדי לעבד אותו מחדש צריך להעלות את התמונה שוב." });
         const key = setting("OPENAI_API_KEY");
         if (!key) return json(400, { error: "צריך מפתח של OpenAI כדי לעבד מחדש." });
+        // Prefer the original upload; older items only have the catalog photo, shown on white
+        const original = await store.getBytes(libraryKey(`${id}-original.png`));
+        const garment = original ? null : await store.getBytes(libraryKey(`${id}-garment.png`));
+        if (!original && !garment) return json(404, { error: "לא נמצאה תמונה של הפריט." });
+        const source = original || await sharp(garment).flatten({ background: "#ffffff" }).png().toBuffer();
         const quality = ["low", "medium"].includes(input.quality) ? input.quality : "low";
         const chromaKey = chooseChromaKey(record.color);
         const direction = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 1200) : "";
-        const basePrompt = buildGarmentPrompt(record, chromaKey);
+        const fromCutout = original ? "" : "\nReference note: the input is an existing product cutout of this garment on white. Recreate it faithfully as a cleaner catalog photo, changing only what the user direction asks.";
+        const basePrompt = buildGarmentPrompt(record, chromaKey) + fromCutout;
         let bytes;
         try {
           bytes = await openAIEdit({
@@ -2237,7 +2248,7 @@ Respond in strict JSON format:
             model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
             quality,
             size: "1024x1024",
-            images: [{ data: original, mime: "image/png", name: "original.png" }],
+            images: [{ data: source, mime: "image/png", name: "source.png" }],
             prompt: direction ? `${basePrompt}\nUser regeneration direction: ${direction}` : basePrompt,
           });
         } catch (error) {
@@ -2248,17 +2259,68 @@ Respond in strict JSON format:
         } catch {
           bytes = (await processChromaBackground(bytes, chromaKey, { tolerance: 58 })).bytes;
         }
-        await store.setBytes(libraryKey(`${id}-garment.png`), bytes);
+        const stamp = Date.now();
+        const candidateName = `${id}-candidate-${stamp}.png`;
+        await store.setBytes(libraryKey(candidateName), bytes);
         // Re-read so edits made while the image was generating are kept
         const latest = await loadImported(wId);
         const latestRecord = latest.find((item) => item.id === id);
         if (!latestRecord) return json(404, { error: "Wardrobe item not found" });
-        const stamp = Date.now();
-        latestRecord.image = `${LIBRARY_ASSET_ROOT}/${id}-garment.png?t=${stamp}`;
-        latestRecord.thumbnail = latestRecord.image;
-        latestRecord.catalogQuality = quality;
+        const previous = latestRecord.pendingVersion?.file;
+        if (previous) await store.delete(libraryKey(previous)).catch(() => {});
+        latestRecord.pendingVersion = {
+          file: candidateName,
+          image: `${LIBRARY_ASSET_ROOT}/${candidateName}`,
+          quality,
+          fromOriginal: Boolean(original),
+          note: direction || null,
+          createdAt: new Date(stamp).toISOString(),
+        };
         await saveImported(wId, latest);
         return json(200, latestRecord);
+      }
+      const wardrobeVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/version$/i);
+      if (wardrobeVersionMatch && request.method === "POST") {
+        // Decide what to do with a new version: use it, keep it as another item, or discard it
+        const id = wardrobeVersionMatch[1];
+        const wId = resolveWardrobeId(request, url);
+        const { action } = await body(request);
+        const records = await loadImported(wId);
+        const record = records.find((item) => item.id === id);
+        const pending = record?.pendingVersion;
+        if (!record || !pending) return json(404, { error: "אין גרסה חדשה לבחירה." });
+        const candidate = await store.getBytes(libraryKey(pending.file));
+        let created = null;
+        if (action === "use" && candidate) {
+          await store.setBytes(libraryKey(`${id}-garment.png`), candidate);
+          record.image = `${LIBRARY_ASSET_ROOT}/${id}-garment.png?t=${Date.now()}`;
+          record.thumbnail = record.image;
+          record.catalogQuality = pending.quality;
+        } else if (action === "keep-both" && candidate) {
+          const newId = `import-${randomUUID()}`;
+          await store.setBytes(libraryKey(`${newId}-garment.png`), candidate);
+          const original = await store.getBytes(libraryKey(`${id}-original.png`));
+          if (original) await store.setBytes(libraryKey(`${newId}-original.png`), original);
+          created = {
+            ...record,
+            id: newId,
+            name: `${record.name || "פריט"} (גרסה נוספת)`,
+            image: `${LIBRARY_ASSET_ROOT}/${newId}-garment.png`,
+            thumbnail: `${LIBRARY_ASSET_ROOT}/${newId}-garment.png`,
+            modeledImage: null,
+            originalImage: original ? `${LIBRARY_ASSET_ROOT}/${newId}-original.png` : null,
+            catalogQuality: pending.quality,
+            pendingVersion: null,
+            createdAt: new Date().toISOString(),
+          };
+          records.push(created);
+        } else if (action !== "discard") {
+          return json(400, { error: "Unknown action" });
+        }
+        await store.delete(libraryKey(pending.file)).catch(() => {});
+        record.pendingVersion = null;
+        await saveImported(wId, records);
+        return json(200, { item: record, created });
       }
       const wardrobeModeledMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/modeled$/i);
       if (wardrobeModeledMatch && request.method === "POST") {

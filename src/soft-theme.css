@@ -150,7 +150,7 @@
 .item-sheet__modeled { background: var(--surface); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .7); }
 .item-sheet__actions button { background: var(--surface); border-color: var(--line); border-radius: 16px; }
 .item-sheet__section { border-top-color: var(--line); }
-.item-sheet__footer { background: rgba(247, 242, 236, .92); backdrop-filter: blur(8px); border-top-color: var(--line); }
+.item-sheet__footer { background: var(--paper); border-top-color: var(--line); }
 .selection-bar { border: 0; border-radius: 22px; background: rgba(251, 247, 242, .94); backdrop-filter: blur(10px); }
 .lightbox { background: rgba(46, 42, 38, .7); backdrop-filter: blur(4px); }
 
@@ -191,3 +191,36 @@
 .item-sheet__label { font-size: 13px; font-weight: 600; }
 .item-sheet__label span { color: var(--muted); font-weight: 400; }
 .item-sheet__panel .item-sheet__textarea { margin-bottom: 0; }
+
+/* Quality badge on wardrobe cards */
+.gallery-item__quality {
+  position: absolute;
+  bottom: 10px;
+  inset-inline-end: 10px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(251, 247, 242, .9);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(94, 72, 52, .1);
+}
+
+/* Compare the current photo with a new version */
+.item-versions { display: grid; gap: 10px; }
+.item-versions__compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.item-versions__compare figure { margin: 0; display: grid; gap: 6px; }
+.item-versions__compare button {
+  display: block;
+  aspect-ratio: 1;
+  padding: 8px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: zoom-in;
+}
+.item-versions__compare .is-new button { box-shadow: inset 0 0 0 2px var(--accent); }
+.item-versions__compare img { width: 100%; height: 100%; object-fit: contain; }
+.item-versions__compare figcaption { font-size: 12px; color: var(--muted); text-align: center; }
+.item-versions__compare .is-new figcaption { color: var(--accent); font-weight: 600; }

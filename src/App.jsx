@@ -54,6 +54,10 @@ function getItemSlotKey(item) {
   return "top";
 }
 
+// How an item's catalog photo was made
+const QUALITY_LABELS = { low: "זול", medium: "בינוני", high: "איכות גבוהה", free: "חינמי", photoroom: "פוטורום" };
+const qualityLabel = (value) => QUALITY_LABELS[value] || null;
+
 // Examples shown in every "note to the AI" field
 const AI_NOTE_HINT = "למשל: שמלת מקסי, בגד גוף, חולצה קצרה, ללבוש פתוח";
 
@@ -222,6 +226,7 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
         />
         {hasModeled && <img className="gallery-item__modeled" src={item.modeledImage} alt="" loading="lazy" />}
         {selectMode && <span className="gallery-item__check" aria-hidden="true">{checked && <Check size={16} weight="bold" />}</span>}
+        {qualityLabel(item.catalogQuality) && !selectMode && <span className="gallery-item__quality">{qualityLabel(item.catalogQuality)}</span>}
       </button>
       {hasModeled && !selectMode && (
         <button type="button" className="gallery-item__swap" onClick={() => setShowModeled((value) => !value)} aria-pressed={showModeled}>
@@ -401,7 +406,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
   );
 }
 
-function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, onSave, onDelete, onModeledGenerated }) {
+function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, onSave, onDelete, onModeledGenerated, onItemCreated }) {
   const [zoomSrc, setZoomSrc] = useState(null);
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
@@ -419,7 +424,30 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   const [redoError, setRedoError] = useState("");
   const [redoPrompt, setRedoPrompt] = useState("");
 
-  // Redo the catalog photo from the original upload, at the chosen quality
+  const [deciding, setDeciding] = useState(null);
+
+  // Use, keep as another item, or discard the new version
+  const decideVersion = async (action) => {
+    setDeciding(action);
+    setRedoError("");
+    try {
+      const res = await fetch(`/api/import/wardrobe/${item.id}/version`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "לא ניתן לשמור את הבחירה כרגע");
+      onModeledGenerated?.(data.item);
+      if (data.created) onItemCreated?.(data.created);
+    } catch (err) {
+      setRedoError(err.message || "לא ניתן לשמור את הבחירה כרגע");
+    } finally {
+      setDeciding(null);
+    }
+  };
+
+  // Create a new version of the catalog photo to compare with the current one
   const handleRedo = async (quality) => {
     setRedoing(quality);
     setRedoError("");
@@ -596,7 +624,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     <aside className={`viewer item-sheet${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="פריט מלתחה נבחר">
       <header className="item-sheet__header">
         <div>
-          <p className="item-sheet__eyebrow">{[TYPE_MAP[draft.part]?.singular || "פריט", item.brand].filter(Boolean).join(" · ")}</p>
+          <p className="item-sheet__eyebrow">{[TYPE_MAP[draft.part]?.singular || "פריט", item.brand, qualityLabel(item.catalogQuality) && `נוצר: ${qualityLabel(item.catalogQuality)}`].filter(Boolean).join(" · ")}</p>
           <h2>{draft.name || type}</h2>
         </div>
         <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="סגור" ref={closeButtonRef}>
@@ -659,9 +687,36 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
 
       <section className="item-sheet__section item-sheet__redo" aria-labelledby="item-redo-title">
         <h3 id="item-redo-title">לא מרוצה מהתמונה?</h3>
-        {item.originalImage ? (
+        {item.pendingVersion ? (
+          <div className="item-versions">
+            <p className="item-sheet__note">נוצרה גרסה חדשה. בחרי מה לעשות איתה:</p>
+            <div className="item-versions__compare">
+              <figure>
+                <button type="button" onClick={() => setZoomSrc(item.image)} aria-label="הגדלת התמונה הנוכחית"><img src={item.image} alt="" /></button>
+                <figcaption>הנוכחית{qualityLabel(item.catalogQuality) ? ` · ${qualityLabel(item.catalogQuality)}` : ""}</figcaption>
+              </figure>
+              <figure className="is-new">
+                <button type="button" onClick={() => setZoomSrc(item.pendingVersion.image)} aria-label="הגדלת הגרסה החדשה"><img src={item.pendingVersion.image} alt="" /></button>
+                <figcaption>החדשה · {qualityLabel(item.pendingVersion.quality)}</figcaption>
+              </figure>
+            </div>
+            <div className="item-sheet__redo-actions">
+              <button type="button" className="primary-button" disabled={Boolean(deciding)} onClick={() => decideVersion("use")}>
+                <Check size={15} aria-hidden="true" /> {deciding === "use" ? "שומר..." : "להשתמש בחדשה"}
+              </button>
+              <button type="button" className="secondary-button" disabled={Boolean(deciding)} onClick={() => decideVersion("keep-both")}>
+                <Plus size={15} aria-hidden="true" /> {deciding === "keep-both" ? "שומר..." : "לשמור כפריט נוסף"}
+              </button>
+              <button type="button" className="secondary-button" disabled={Boolean(deciding)} onClick={() => decideVersion("discard")}>
+                <X size={15} aria-hidden="true" /> {deciding === "discard" ? "מוחק..." : "להשאיר את הנוכחית"}
+              </button>
+            </div>
+          </div>
+        ) : (
           <>
-            <p className="item-sheet__note">התמונה תיווצר מחדש מהתמונה המקורית שהעלית.</p>
+            <p className="item-sheet__note">{item.originalImage
+              ? "תיווצר גרסה חדשה מהתמונה המקורית שהעלית. תוכלי להשוות ולבחור."
+              : "לפריט הזה לא נשמרה תמונה מקורית, אז הגרסה החדשה תיווצר מהתמונה שבארון. תוכלי להשוות ולבחור."}</p>
             <textarea
               className="item-sheet__textarea"
               rows={2}
@@ -681,8 +736,6 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
               </button>
             </div>
           </>
-        ) : (
-          <p className="item-sheet__note">הפריט הזה נוסף לפני שהתחלנו לשמור את התמונה המקורית, ולכן אי אפשר לעבד אותו מחדש מכאן. אפשר להעלות את התמונה שלו שוב.</p>
         )}
         {redoError && <p className="item-sheet__error" role="alert">{redoError}</p>}
       </section>
@@ -2440,6 +2493,7 @@ export function App() {
           onModeledGenerated={(updatedItem) => {
             setItems((current) => current.map((i) => i.id === updatedItem.id ? updatedItem : i));
           }}
+          onItemCreated={(newItem) => setItems((current) => [...current, newItem])}
         />
       )}
 
