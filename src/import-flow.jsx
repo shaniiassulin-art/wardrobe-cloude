@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowCounterClockwise, Check, Plus, SpinnerGap, Trash, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
 import "./import-flow.css";
+import { isImageFile, toBrowserImage } from "./image-files.js";
 
 const API = "/api/import/jobs";
 const CONFIG_API = "/api/import/config";
@@ -319,6 +320,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   const [uploadingModel, setUploadingModel] = useState(false);
   const [mode, setMode] = useState(readStoredMode);
   const [removalStatus, setRemovalStatus] = useState("");
+  const [uploadStatus, setUploadStatus] = useState("");
   const canUseAI = Boolean(setup?.hasOpenAIKey);
   const importMode = canUseAI ? mode : "free";
   const chooseMode = (next) => {
@@ -334,7 +336,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
       if (file.size > 35 * 1024 * 1024) {
         throw new Error("קובץ התמונה גדול מדי (מעל 35MB). מומלץ לבחור תמונה רגילה מהגלריה.");
       }
-      const imageDataUrl = await compressImageForUpload(file, 1200, 0.82);
+      const imageDataUrl = await compressImageForUpload(await toBrowserImage(file), 1200, 0.82);
       const res = await api("/api/import/model-reference", {
         method: "POST",
         body: JSON.stringify({ imageDataUrl }),
@@ -404,18 +406,26 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
 
   const submitFiles = useCallback(async (files) => {
     if (!setup?.ready) { setOpen(true); return; }
-    const images = [...files].filter((file) => file.type.startsWith("image/"));
-    if (!images.length) return;
+    const selected = [...files];
+    const images = selected.filter(isImageFile);
+    const rejected = selected.filter((file) => !isImageFile(file));
     setDragging(false); setError(""); setNotice(null);
-    for (const file of images) {
+    if (rejected.length) {
+      setError(`אי אפשר להעלות את ${rejected.map((file) => file.name).join(", ")}. אפשר להעלות רק תמונות (JPG, PNG, HEIC).`);
+      setOpen(true);
+    }
+    if (!images.length) return;
+    for (const original of images) {
+      setUploadStatus(images.length > 1 ? `מעלה את ${original.name}...` : "מעלה את התמונה...");
       try {
+        const file = await toBrowserImage(original);
         // Phone photos can exceed the hosted request size limit, so downscale first
         const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
         const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: importMode, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
         const createdJobs = result.jobs || [result];
         if (result.warning) { setError(result.warning); setOpen(true); }
         if (!createdJobs.length && result.noClothingDetected) {
-          setNotice({ tone: "complete", text: "No clothing detected", detail: `We couldn’t find a distinct wearable item in ${file.name}. Try a clearer or more tightly framed image.` });
+          setNotice({ tone: "complete", text: "לא זוהה בגד", detail: `לא מצאנו בגד בתמונה ${file.name}. נסו תמונה ברורה יותר, שבה הבגד ממלא את רוב התמונה.` });
           setOpen(true);
           continue;
         }
@@ -425,6 +435,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           for (const job of createdJobs) await cutOutInBrowser(job, imageDataUrl, file.name);
         }
       } catch (requestError) { setError(requestError.message); setOpen(true); }
+      finally { setUploadStatus(""); }
     }
   }, [setup, importMode, cutOutInBrowser]);
 
@@ -503,7 +514,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
 
   const active = jobs[jobs.length - 1];
   const setupRequired = setup?.ready === false;
-  const activeStatus = removalStatus ? { tone: "processing", text: removalStatus } : setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
+  const activeStatus = removalStatus || uploadStatus ? { tone: "processing", text: removalStatus || uploadStatus } : setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && (reviewStageFor(job) || hasCleanupFailure(job)));
   const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || jobs.find((job) => hasCleanupFailure(job)) || active;
@@ -513,7 +524,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
 
   return (
     <>
-      <input ref={inputRef} type="file" accept="image/*" multiple hidden disabled={!setup?.ready} onChange={(event) => { submitFiles(event.target.files); event.target.value = ""; }} />
+      <input ref={inputRef} type="file" accept="image/*,.heic,.heif" multiple hidden disabled={!setup?.ready} onChange={(event) => { const chosen = [...event.target.files]; event.target.value = ""; submitFiles(chosen); }} />
       <input ref={modelInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/heif,image/*" hidden onChange={(event) => { uploadModelReference(event.target.files[0]); event.target.value = ""; }} />
       <div className="import-drop-overlay" data-active={dragging && !setupRequired} aria-hidden={!dragging || setupRequired}>
         <div className="import-drop-target is-over">

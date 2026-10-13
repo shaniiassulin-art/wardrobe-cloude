@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
+import { toBrowserImage } from "./image-files.js";
 
 const STORAGE_KEY = "open-wardrobe-edits-v1";
 const DELETED_STORAGE_KEY = "open-wardrobe-deleted-v1";
@@ -801,7 +802,7 @@ function UserAccountModal({
             <input
               ref={modelInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               hidden
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -2034,7 +2035,7 @@ export function App() {
       if (file.size > 35 * 1024 * 1024) {
         throw new Error("קובץ התמונה גדול מדי (מעל 35MB). מומלץ לבחור תמונה רגילה מהגלריה.");
       }
-      const imageDataUrl = await compressImageForUpload(file, 1200, 0.82);
+      const imageDataUrl = await compressImageForUpload(await toBrowserImage(file), 1200, 0.82);
       const res = await fetch("/api/import/model-reference", {
         method: "POST",
         headers: {
