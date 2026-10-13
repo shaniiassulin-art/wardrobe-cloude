@@ -175,7 +175,7 @@ async function api(path, options) {
     },
   });
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || "לא ניתן לעדכן את תהליך הייבוא.");
+  if (!response.ok) throw new Error(`${value.error || "לא ניתן לעדכן את תהליך הייבוא."} (קוד ${response.status})`);
   return value;
 }
 
@@ -400,7 +400,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         if (importMode === "free") {
           for (const job of createdJobs) await cutOutInBrowser(job, imageDataUrl, file.name);
         }
-      } catch (requestError) { setError(requestError.message); }
+      } catch (requestError) { setError(requestError.message); setOpen(true); }
     }
   }, [setup, importMode, cutOutInBrowser]);
 
@@ -526,8 +526,9 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           {!jobs.length ? setupRequired ? (
             <div className="import-drop-target import-setup-warning">
               <WarningCircle size={30} />
-              <h2>דרושה תמונת מודל</h2>
-              {!setup.hasModelReference && (
+              <h2>{setup?.error ? "לא ניתן להתחבר לשרת" : "דרושה תמונת מודל"}</h2>
+              {setup?.error && <p style={{ margin: "6px 0", fontSize: "14px" }}>{setup.error}</p>}
+              {!setup?.error && !setup?.hasModelReference && (
                 <p style={{ margin: "6px 0", fontSize: "14px" }}>
                   👤 <strong>תמונת מודל:</strong> העלו תמונת מודל דרך הכפתור בראש העמוד להלבשת בגדים עלייך.
                 </p>

@@ -2493,7 +2493,8 @@ Respond in strict JSON format:
     } catch (error) {
       const statusCode = error.status || 500;
       if (statusCode === 500) console.error(error);
-      return json(statusCode, { error: statusCode === 500 ? "Internal server error" : error.message, ...(process.env.NODE_ENV === "development" && statusCode === 500 ? { detail: error.message } : {}) });
+      // The API is behind the site password, so the real reason is safe to show and helps diagnose problems
+      return json(statusCode, { error: statusCode === 500 ? `שגיאת שרת: ${error.message}` : error.message });
     }
   }
 
