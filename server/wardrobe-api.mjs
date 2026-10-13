@@ -2341,12 +2341,13 @@ Respond in strict JSON format:
             const [r, g, b] = stats.channels.slice(0, 3).map((ch) => Math.round(ch.mean));
             dominantHex = `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("")}`;
           } catch {}
+          // Free imports send the category and colour the browser recognised
           detected = [normalizeMetadata({
             name: input.metadata?.name || "New piece",
-            part: "upperbody",
-            color: dominantHex,
+            part: (free && input.metadata?.part) || "upperbody",
+            color: (free && input.metadata?.color) || dominantHex,
             boundingBox: { x: 0, y: 0, width: 1000, height: 1000 },
-            tags: ["casual"],
+            tags: free ? [] : ["casual"],
           })];
         }
         const jobs = [];

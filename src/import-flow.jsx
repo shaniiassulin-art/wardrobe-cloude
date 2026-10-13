@@ -7,6 +7,7 @@ const API = "/api/import/jobs";
 const CONFIG_API = "/api/import/config";
 const PARTS = [
   ["upperbody", "חולצות"],
+  ["dress", "שמלות"],
   ["wholebody_up", "עליוניות וז'קטים"],
   ["lowerbody", "מכנסיים"],
   ["accessories_up", "אקססוריז"],
@@ -123,14 +124,14 @@ async function downscalePng(blob, maxDimension = 1100) {
   return canvas.toDataURL("image/png");
 }
 
-function removeBackgroundInWorker(source, onProgress) {
+function extractGarmentsInWorker(source, onProgress) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./background-removal.worker.js", import.meta.url), { type: "module" });
     worker.onmessage = ({ data }) => {
       if (data.type === "progress") return onProgress?.(data.key, data.current, data.total);
       worker.terminate();
-      if (data.type === "done") resolve(data.blob);
-      else reject(new Error(data.message));
+      if (data.type === "done") resolve(data.garments);
+      else reject(Object.assign(new Error(data.message), { fromWorker: true }));
     };
     worker.onerror = (event) => {
       worker.terminate();
@@ -140,20 +141,26 @@ function removeBackgroundInWorker(source, onProgress) {
   });
 }
 
-// Free import: the background is removed on this device. The model (~40MB) is
-// downloaded once from the library's CDN and cached by the browser.
-async function removeBackgroundInBrowser(imageDataUrl, onProgress) {
+// Free import, all on this device: the worker removes the background and splits
+// a worn outfit into separate garments (no face, skin or accessories). Its models
+// (~70MB) are downloaded once and cached by the browser.
+async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
   const source = await (await fetch(imageDataUrl)).blob();
-  let cutout;
+  let garments;
   try {
-    cutout = await removeBackgroundInWorker(source, onProgress);
+    garments = await extractGarmentsInWorker(source, onProgress);
   } catch (workerError) {
-    // Browsers without module workers: run on the page (it freezes while working)
-    console.warn("Background removal worker failed, running on the page:", workerError);
+    if (workerError.fromWorker) throw workerError;
+    // Browsers without module workers: background removal only, on the page
+    console.warn("Garment worker unavailable, removing the background on the page:", workerError);
     const { removeBackground } = await import("@imgly/background-removal");
-    cutout = await removeBackground(source, { model: "isnet_quint8", output: { format: "image/png" }, progress: onProgress });
+    const blob = await removeBackground(source, { model: "isnet_quint8", output: { format: "image/png" }, progress: onProgress });
+    garments = [{ blob, part: null, name: null, color: null }];
   }
-  try { return await downscalePng(cutout); } catch { return blobToDataUrl(cutout); }
+  return Promise.all(garments.map(async (garment) => ({
+    ...garment,
+    dataUrl: await downscalePng(garment.blob).catch(() => blobToDataUrl(garment.blob)),
+  })));
 }
 
 function ImportModeToggle({ mode, canUseAI, onChange }) {
@@ -174,7 +181,7 @@ function ImportModeToggle({ mode, canUseAI, onChange }) {
       </div>
       <p className="import-mode-note">
         {mode === "free"
-          ? "הכי טוב לתמונה של בגד אחד, לבד, על רקע פשוט."
+          ? "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז."
           : "כל תמונה עולה כסף בחשבון OpenAI שלך."}
       </p>
     </div>
@@ -382,22 +389,28 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     return () => clearInterval(timer);
   }, [jobs, refresh]);
 
-  const cutOutInBrowser = useCallback(async (job, imageDataUrl, fileName) => {
-    setRemovalStatus("מסיר רקע מהתמונה...");
+  const importFreeGarments = useCallback(async (imageDataUrl, fileName) => {
+    setRemovalStatus("מזהה את הבגדים בתמונה...");
     try {
-      const cutout = await removeBackgroundInBrowser(imageDataUrl, (key, current, total) => {
-        if (key.startsWith("fetch:") && total) setRemovalStatus(`מוריד את כלי הסרת הרקע (פעם אחת בלבד) ${Math.round((current / total) * 100)}%`);
-        else if (key.startsWith("compute:")) setRemovalStatus("מסיר רקע מהתמונה...");
+      const garments = await extractGarmentsInBrowser(imageDataUrl, (key, current, total) => {
+        if (key.startsWith("fetch:") && total) setRemovalStatus(`מוריד את כלי זיהוי הבגדים (פעם אחת בלבד) ${Math.round((current / total) * 100)}%`);
+        else if (key.startsWith("compute:")) setRemovalStatus("מזהה את הבגדים בתמונה...");
       });
-      const updated = await api(`${API}/${job.id}/stages/garment/upload`, { method: "POST", body: JSON.stringify({ imageDataUrl: cutout }) });
-      setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
-      setSelectedReviewId(job.id);
+      const baseName = fileName.replace(/\.[^.]+$/, "");
+      setRemovalStatus(garments.length > 1 ? `נמצאו ${garments.length} בגדים, שומר...` : "שומר את הבגד...");
+      for (const garment of garments) {
+        const metadata = { name: garment.name || baseName, ...(garment.part ? { part: garment.part } : {}), ...(garment.color ? { color: garment.color } : {}) };
+        const created = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: "free", metadata }) });
+        const job = created.jobs[0];
+        const updated = await api(`${API}/${job.id}/stages/garment/upload`, { method: "POST", body: JSON.stringify({ imageDataUrl: garment.dataUrl }) });
+        setJobs((current) => [...current, updated]);
+        setDrafts((current) => ({ ...current, [updated.id]: defaultDraft(updated) }));
+        setSelectedReviewId((current) => current || updated.id);
+      }
       setOpen(true);
     } catch (removalError) {
-      await api(`${API}/${job.id}`, { method: "DELETE" }).catch(() => {});
-      setJobs((current) => current.filter((item) => item.id !== job.id));
       const message = removalError?.message || "";
-      setError(/[\u0590-\u05FF]/.test(message) ? message : `לא הצלחנו להסיר את הרקע מ-${fileName}. נסו תמונה אחרת.`);
+      setError(/[\u0590-\u05FF]/.test(message) ? message : `לא הצלחנו לחלץ בגדים מ-${fileName}. נסו תמונה אחרת.`);
       setOpen(true);
     } finally {
       setRemovalStatus("");
@@ -421,6 +434,10 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         const file = await toBrowserImage(original);
         // Phone photos can exceed the hosted request size limit, so downscale first
         const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
+        if (importMode === "free") {
+          await importFreeGarments(imageDataUrl, file.name);
+          continue;
+        }
         const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: importMode, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
         const createdJobs = result.jobs || [result];
         if (result.warning) { setError(result.warning); setOpen(true); }
@@ -431,13 +448,10 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         }
         setJobs((current) => [...current, ...createdJobs]);
         setDrafts((current) => ({ ...current, ...Object.fromEntries(createdJobs.map((job) => [job.id, defaultDraft(job)])) }));
-        if (importMode === "free") {
-          for (const job of createdJobs) await cutOutInBrowser(job, imageDataUrl, file.name);
-        }
       } catch (requestError) { setError(requestError.message); setOpen(true); }
       finally { setUploadStatus(""); }
     }
-  }, [setup, importMode, cutOutInBrowser]);
+  }, [setup, importMode, importFreeGarments]);
 
   useEffect(() => {
     let depth = 0;
