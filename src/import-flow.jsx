@@ -163,27 +163,28 @@ async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
   })));
 }
 
+const IMPORT_MODES = [
+  { id: "free", title: "חינמי", detail: "גזירה במכשיר, בלי עלות", note: "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז. בלי עלות." },
+  { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה, כמעט חינם", note: "ה-AI יוצר תמונת מוצר נקייה של כל בגד ומשלים חלקים מוסתרים. עולה בערך 3 אגורות לבגד בחשבון OpenAI." },
+  { id: "ai", title: "AI מלא", detail: "קטלוג והלבשה על המודל", note: "תמונת מוצר באיכות גבוהה ותמונה של הבגד עלייך. עולה בערך 2 ש\"ח לבגד בחשבון OpenAI." },
+];
+
 function ImportModeToggle({ mode, canUseAI, onChange }) {
   if (!canUseAI) {
     return <p className="import-mode-note">ייבוא חינמי: הרקע מוסר במכשיר שלך, בלי AI ובלי עלות.</p>;
   }
+  const current = IMPORT_MODES.find((option) => option.id === mode) || IMPORT_MODES[0];
   return (
     <div className="import-mode">
       <div className="import-mode__options" role="radiogroup" aria-label="סוג ייבוא">
-        <button type="button" role="radio" aria-checked={mode === "free"} className={mode === "free" ? "is-active" : ""} onClick={() => onChange("free")}>
-          <strong>חינמי</strong>
-          <span>גזירה והסרת רקע</span>
-        </button>
-        <button type="button" role="radio" aria-checked={mode === "ai"} className={mode === "ai" ? "is-active" : ""} onClick={() => onChange("ai")}>
-          <strong>AI</strong>
-          <span>זיהוי כמה בגדים והלבשה על מודל (בתשלום)</span>
-        </button>
+        {IMPORT_MODES.map((option) => (
+          <button key={option.id} type="button" role="radio" aria-checked={mode === option.id} className={mode === option.id ? "is-active" : ""} onClick={() => onChange(option.id)}>
+            <strong>{option.title}</strong>
+            <span>{option.detail}</span>
+          </button>
+        ))}
       </div>
-      <p className="import-mode-note">
-        {mode === "free"
-          ? "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז."
-          : "כל תמונה עולה כסף בחשבון OpenAI שלך."}
-      </p>
+      <p className="import-mode-note">{current.note}</p>
     </div>
   );
 }

@@ -306,7 +306,7 @@
 }
 
 .import-mode { width: 100%; display: grid; gap: 8px; margin-top: 14px; }
-.import-mode__options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.import-mode__options { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .import-mode__options button {
   display: grid;
   gap: 2px;

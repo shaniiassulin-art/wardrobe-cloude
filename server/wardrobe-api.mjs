@@ -1825,13 +1825,17 @@ Respond in strict JSON format:
         let bytes;
         if (stageName === "garment") {
           chromaKeyUsed = chooseChromaKey(current.metadata.color);
+          // Catalog imports only need a product shot, so they default to the cheapest quality
+          const garmentQuality = current.mode === "catalog"
+            ? setting("OPENAI_CATALOG_QUALITY", "low")
+            : setting("OPENAI_IMAGE_QUALITY", "high");
           const basePrompt = buildGarmentPrompt(current.metadata, chromaKeyUsed);
           if (key) {
             bytes = await openAIEdit({
               key,
               baseUrl: apiBaseUrl(),
               model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
-              quality: setting("OPENAI_IMAGE_QUALITY", "high"),
+              quality: garmentQuality,
               size: "1024x1024",
               images: [original],
               prompt: current.stages.garment.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.garment.prompt}` : basePrompt,
@@ -2319,6 +2323,8 @@ Respond in strict JSON format:
         const key = setting("OPENAI_API_KEY");
         // Free mode: no AI detection; the browser removes the background itself
         const free = input.mode === "free";
+        // Catalog: AI detection and a cheap AI product shot, without dressing it on the model
+        const catalog = input.mode === "catalog";
         let detected = [];
         let warning = null;
         if (!free && process.env.GEMINI_API_KEY) {
@@ -2359,10 +2365,12 @@ Respond in strict JSON format:
           await store.setBytes(jobKey(id, originalFile), normalizedImage);
           await store.setBytes(jobKey(id, cropFile), croppedImage);
           const now = new Date().toISOString();
-          const cropStage = { ...stageState(), status: free ? "approved" : "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
-          const job = { id, wardrobeId: wId, mode: free ? "free" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
+          const cropStage = { ...stageState(), status: free || catalog ? "approved" : "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
+          const job = { id, wardrobeId: wId, mode: free ? "free" : catalog ? "catalog" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
           job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
           await saveJob(job); jobs.push(publicJob(job));
+          // Catalog skips the crop review and starts the product shot right away
+          if (catalog) await startStage(job.id, "garment");
         }
         return json(202, { jobs, noClothingDetected: jobs.length === 0, warning });
       }
@@ -2464,7 +2472,7 @@ Respond in strict JSON format:
         job.stages[stageName].updatedAt = new Date().toISOString();
         const currentSetup = await setupStatus(job.wardrobeId);
         const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
-        const skipModeled = job.mode === "free" || !currentSetup.hasModelReference;
+        const skipModeled = job.mode === "free" || job.mode === "catalog" || !currentSetup.hasModelReference;
         const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && !skipModeled;
         if (stageName === "garment" && decision === "approve" && skipModeled) {
           job.stages.modeled.status = "skipped";
