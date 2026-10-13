@@ -930,6 +930,13 @@ export function openAIError(status, result = {}, fallback = "OpenAI request fail
   return Object.assign(new Error(message), { accountProblem });
 }
 
+// Keys pasted into Netlify are sometimes the masked "••••" shown by a dashboard,
+// which cannot be sent in a header. Explain that instead of a cryptic fetch error.
+export function checkApiKey(key, service) {
+  if (/^[!-~]+$/.test(key)) return key;
+  throw Object.assign(new Error(`המפתח של ${service} שמוגדר ב-Netlify לא תקין: יש בו נקודות או תווים שלא שייכים למפתח. כנראה הועתק המפתח המוסתר (••••). צריך ליצור מפתח חדש, להעתיק אותו מיד כשהוא מוצג, ולעדכן אותו ב-Netlify.`), { accountProblem: true, status: 400 });
+}
+
 // Photoroom "Ghost Mannequin": rebuilds one garment as a clean catalog shot on a
 // transparent background. Keys starting with "sandbox_" are free but watermarked.
 export function photoroomError(status, result = {}) {
@@ -946,7 +953,7 @@ async function photoroomGhostMannequin({ key, baseUrl, image }) {
   form.set("ghostMannequin.mode", "ai.auto");
   form.set("removeBackground", "true");
   form.set("export.format", "png");
-  const response = await fetch(`${baseUrl}/v2/edit`, { method: "POST", headers: { "x-api-key": key }, body: form });
+  const response = await fetch(`${baseUrl}/v2/edit`, { method: "POST", headers: { "x-api-key": checkApiKey(key, "פוטורום") }, body: form });
   if (!response.ok) throw photoroomError(response.status, await response.json().catch(() => ({})));
   return Buffer.from(await response.arrayBuffer());
 }
@@ -977,7 +984,7 @@ async function openAIEdit({ key, baseUrl, model, prompt, images, size, backgroun
   if (background) form.set("background", background);
 
   const response = await fetch(`${baseUrl}/images/edits`, {
-    method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form,
+    method: "POST", headers: { Authorization: `Bearer ${checkApiKey(key, "OpenAI")}` }, body: form,
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw openAIError(response.status, result, `OpenAI image request failed (${response.status})`);
@@ -990,7 +997,7 @@ async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
   const validVisionModel = (!model || model.includes("5.4") || !model.includes("gpt-4")) ? "gpt-4o-mini" : model;
   const response = await fetch(`${baseUrl}/responses`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${checkApiKey(key, "OpenAI")}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: validVisionModel,
       input: [{ role: "user", content: [
@@ -1087,8 +1094,9 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   let serverSettings = null;
   const running = new Map();
 
+  // Values pasted into a dashboard often carry stray spaces or line breaks
   const setting = (name, fallback = "") =>
-    serverSettings?.[name] || env[name] || process.env[name] || fallback;
+    String(serverSettings?.[name] || env[name] || process.env[name] || fallback).trim();
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
 
   async function loadSettings() {
@@ -1659,7 +1667,7 @@ Respond in strict JSON format:
         const res = await fetch(`${apiBaseUrl()}/chat/completions`, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${key}`,
+            "Authorization": `Bearer ${checkApiKey(key, "OpenAI")}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
