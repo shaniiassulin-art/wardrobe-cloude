@@ -98,6 +98,64 @@ const compressImageForUpload = async (file, maxDimension = 1200, quality = 0.82)
   });
 };
 
+const MODE_STORAGE_KEY = "wardrobe-import-mode";
+
+function readStoredMode() {
+  try { return localStorage.getItem(MODE_STORAGE_KEY) || "free"; } catch { return "free"; }
+}
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(blob);
+});
+
+// Shrinks the cutout so the upload stays well under the hosted request limit
+async function downscalePng(blob, maxDimension = 1100) {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
+// Free import: the background is removed on this device. The model (~40MB) is
+// downloaded once from the library's CDN and cached by the browser.
+async function removeBackgroundInBrowser(imageDataUrl, onProgress) {
+  const { removeBackground } = await import("@imgly/background-removal");
+  const source = await (await fetch(imageDataUrl)).blob();
+  const cutout = await removeBackground(source, { model: "isnet_quint8", output: { format: "image/png" }, progress: onProgress });
+  try { return await downscalePng(cutout); } catch { return blobToDataUrl(cutout); }
+}
+
+function ImportModeToggle({ mode, canUseAI, onChange }) {
+  if (!canUseAI) {
+    return <p className="import-mode-note">ייבוא חינמי: הרקע מוסר במכשיר שלך, בלי AI ובלי עלות.</p>;
+  }
+  return (
+    <div className="import-mode">
+      <div className="import-mode__options" role="radiogroup" aria-label="סוג ייבוא">
+        <button type="button" role="radio" aria-checked={mode === "free"} className={mode === "free" ? "is-active" : ""} onClick={() => onChange("free")}>
+          <strong>חינמי</strong>
+          <span>גזירה והסרת רקע</span>
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "ai"} className={mode === "ai" ? "is-active" : ""} onClick={() => onChange("ai")}>
+          <strong>AI</strong>
+          <span>זיהוי כמה בגדים והלבשה על מודל (בתשלום)</span>
+        </button>
+      </div>
+      <p className="import-mode-note">
+        {mode === "free"
+          ? "הכי טוב לתמונה של בגד אחד, לבד, על רקע פשוט."
+          : "כל תמונה עולה כסף בחשבון OpenAI שלך."}
+      </p>
+    </div>
+  );
+}
+
 async function api(path, options) {
   let activeWardrobe = "user-shani";
   if (typeof window !== "undefined") {
@@ -178,13 +236,13 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
             <div className="import-field"><label htmlFor={`tags-${job.id}`}>מאפיינים</label><input id={`tags-${job.id}`} value={draft.tags} placeholder="יומיומי, כותנה, פסים" onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></div>
           </>
         ) : <p className="import-card__detail">אישור התמונה יוסיף אותה למלתחה, או שניתן ליצור מחדש עם הנחיות מדויקות.</p>}
-        {!isCrop && <div className="import-field import-regenerate-field">
+        {!isCrop && job.mode !== "free" && <div className="import-field import-regenerate-field">
           <label htmlFor={`regenerate-${job.id}-${stage}`}>הנחיות ליצירה מחדש <span>אופציונלי</span></label>
           <textarea id={`regenerate-${job.id}-${stage}`} rows="2" value={regenPrompt} onChange={(event) => setRegenPrompt(event.target.value)} placeholder="לדוגמה: לשמור על הרוכסן המקורי ולהסיר את התווית" />
         </div>}
         <div className="import-actions">
           <button className="import-button" disabled={busy} onClick={() => onAction("reject")}><Trash size={14} /> דחייה</button>
-          {!isCrop && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt)}><ArrowCounterClockwise size={14} /> יצירה מחדש</button>}
+          {!isCrop && job.mode !== "free" && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt)}><ArrowCounterClockwise size={14} /> יצירה מחדש</button>}
           <button className="import-button import-button--primary" disabled={busy || (isGarment && (!draft.name.trim() || !primaryValid || !secondaryValid))} onClick={() => onAction("approve")}><Check size={14} weight="bold" /> {isCrop ? "אישור גזיר" : "אישור"}</button>
         </div>
       </div>
@@ -235,6 +293,14 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   const [notice, setNotice] = useState(null);
   const [setup, setSetup] = useState(null);
   const [uploadingModel, setUploadingModel] = useState(false);
+  const [mode, setMode] = useState(readStoredMode);
+  const [removalStatus, setRemovalStatus] = useState("");
+  const canUseAI = Boolean(setup?.hasOpenAIKey);
+  const importMode = canUseAI ? mode : "free";
+  const chooseMode = (next) => {
+    setMode(next);
+    try { localStorage.setItem(MODE_STORAGE_KEY, next); } catch {}
+  };
 
   const uploadModelReference = async (file) => {
     if (!file) return;
@@ -290,6 +356,28 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     return () => clearInterval(timer);
   }, [jobs, refresh]);
 
+  const cutOutInBrowser = useCallback(async (job, imageDataUrl, fileName) => {
+    setRemovalStatus("מסיר רקע מהתמונה...");
+    try {
+      const cutout = await removeBackgroundInBrowser(imageDataUrl, (key, current, total) => {
+        if (key.startsWith("fetch:") && total) setRemovalStatus(`מוריד את כלי הסרת הרקע (פעם אחת בלבד) ${Math.round((current / total) * 100)}%`);
+        else if (key.startsWith("compute:")) setRemovalStatus("מסיר רקע מהתמונה...");
+      });
+      const updated = await api(`${API}/${job.id}/stages/garment/upload`, { method: "POST", body: JSON.stringify({ imageDataUrl: cutout }) });
+      setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
+      setSelectedReviewId(job.id);
+      setOpen(true);
+    } catch (removalError) {
+      await api(`${API}/${job.id}`, { method: "DELETE" }).catch(() => {});
+      setJobs((current) => current.filter((item) => item.id !== job.id));
+      const message = removalError?.message || "";
+      setError(/[\u0590-\u05FF]/.test(message) ? message : `לא הצלחנו להסיר את הרקע מ-${fileName}. נסו תמונה אחרת.`);
+      setOpen(true);
+    } finally {
+      setRemovalStatus("");
+    }
+  }, []);
+
   const submitFiles = useCallback(async (files) => {
     if (!setup?.ready) { setOpen(true); return; }
     const images = [...files].filter((file) => file.type.startsWith("image/"));
@@ -299,7 +387,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
       try {
         // Phone photos can exceed the hosted request size limit, so downscale first
         const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
-        const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
+        const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, mode: importMode, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
         const createdJobs = result.jobs || [result];
         if (result.warning) { setError(result.warning); setOpen(true); }
         if (!createdJobs.length && result.noClothingDetected) {
@@ -309,9 +397,12 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         }
         setJobs((current) => [...current, ...createdJobs]);
         setDrafts((current) => ({ ...current, ...Object.fromEntries(createdJobs.map((job) => [job.id, defaultDraft(job)])) }));
+        if (importMode === "free") {
+          for (const job of createdJobs) await cutOutInBrowser(job, imageDataUrl, file.name);
+        }
       } catch (requestError) { setError(requestError.message); }
     }
-  }, [setup]);
+  }, [setup, importMode, cutOutInBrowser]);
 
   useEffect(() => {
     let depth = 0;
@@ -334,7 +425,16 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         const updated = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
         const garmentPath = `/api/import/library/import-${job.id}-garment.png`;
         onGarmentApproved?.({ id: `import-${job.id}`, ...metadata, image: garmentPath, thumbnail: garmentPath, modeledImage: null, palette: [metadata.color, metadata.secondaryColor].filter(Boolean), importJobId: job.id });
-        setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
+        if (updated.status === "complete") {
+          const remainingJobs = jobs.filter((item) => item.id !== job.id);
+          setJobs(remainingJobs);
+          setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== job.id)));
+          setSelectedReviewId(null);
+          setNotice({ tone: "complete", text: "נוסף למלתחה", detail: `${metadata.name} נשמר במלתחה.` });
+          if (!remainingJobs.length) setOpen(false);
+        } else {
+          setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
+        }
       } else {
         const updated = await api(`${API}/${job.id}/stages/${stage}/${action}`, { method: "POST", body: action === "regenerate" ? JSON.stringify({ prompt }) : undefined });
         const removeFromQueue = action === "reject" || (stage === "modeled" && action === "approve");
@@ -379,7 +479,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
 
   const active = jobs[jobs.length - 1];
   const setupRequired = setup?.ready === false;
-  const activeStatus = setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
+  const activeStatus = removalStatus ? { tone: "processing", text: removalStatus } : setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && (reviewStageFor(job) || hasCleanupFailure(job)));
   const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || jobs.find((job) => hasCleanupFailure(job)) || active;
@@ -402,7 +502,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         <button
           className={`import-tray${hasImportActivity ? " is-expanded" : ""}`}
           type="button"
-          onClick={() => setupRequired || hasImportActivity ? setOpen(true) : inputRef.current?.click()}
+          onClick={() => setupRequired || hasImportActivity || canUseAI ? setOpen(true) : inputRef.current?.click()}
           aria-label={setupRequired ? "הוראות הגדרה" : hasImportActivity ? "התקדמות ייבוא" : "הוספת בגדים"}
         >
           <span className="import-tray__icon">
@@ -438,6 +538,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
               <UploadSimple size={28} />
               <h2>{notice ? "נסו תמונה אחרת" : "העלאת תמונות של בגדים"}</h2>
               <p>{notice?.detail || "גררו לכאן תמונות של בגדים, או לחצו על הכפתור לבחירת קבצים."}</p>
+              <ImportModeToggle mode={importMode} canUseAI={canUseAI} onChange={chooseMode} />
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", marginTop: "14px" }}>
                 <button className="import-button import-button--primary" onClick={() => { setNotice(null); inputRef.current?.click(); }}>
                   <Plus size={16} weight="bold" /> בחירת תמונות בגדים
@@ -475,6 +576,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                   );
                 })}
               </div>
+              <ImportModeToggle mode={importMode} canUseAI={canUseAI} onChange={chooseMode} />
               <div className="import-actions">
                 <button className="import-button" onClick={() => inputRef.current?.click()}><Plus size={14} /> הוסף עוד</button>
               </div>

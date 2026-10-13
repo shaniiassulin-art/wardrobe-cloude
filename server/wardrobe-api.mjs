@@ -1722,6 +1722,8 @@ Respond in strict JSON format:
     return {
       ready: true,
       hasApiKey,
+      // Whether AI import is available; without it the app offers only the free mode
+      hasOpenAIKey: Boolean(setting("OPENAI_API_KEY").trim()),
       hasModelReference: await store.exists(modelReferenceKey(wardrobeId)),
       modelReference: modelReferenceKey(wardrobeId),
     };
@@ -2315,14 +2317,16 @@ Respond in strict JSON format:
         const image = decodeImage(input);
         const normalizedImage = await normalizeImage(image.data);
         const key = setting("OPENAI_API_KEY");
+        // Free mode: no AI detection; the browser removes the background itself
+        const free = input.mode === "free";
         let detected = [];
         let warning = null;
-        if (process.env.GEMINI_API_KEY) {
+        if (!free && process.env.GEMINI_API_KEY) {
           try {
             detected = (await geminiAnalyze({ image: normalizedImage, mime: "image/png" })).map(normalizeMetadata);
           } catch {}
         }
-        if (!detected.length && key) {
+        if (!free && !detected.length && key) {
           try {
             detected = (await openAIAnalyze({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_VISION_MODEL", "gpt-4o-mini"), image: normalizedImage, mime: "image/png" })).map(normalizeMetadata);
           } catch (analysisError) {
@@ -2354,8 +2358,8 @@ Respond in strict JSON format:
           await store.setBytes(jobKey(id, originalFile), normalizedImage);
           await store.setBytes(jobKey(id, cropFile), croppedImage);
           const now = new Date().toISOString();
-          const cropStage = { ...stageState(), status: "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
-          const job = { id, wardrobeId: wId, status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
+          const cropStage = { ...stageState(), status: free ? "approved" : "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
+          const job = { id, wardrobeId: wId, mode: free ? "free" : "ai", status: "active", metadata, stages: { crop: cropStage, garment: stageState(), modeled: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile, originalMime: "image/png" } };
           job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
           await saveJob(job); jobs.push(publicJob(job));
         }
@@ -2384,6 +2388,25 @@ Respond in strict JSON format:
         const input = await body(request);
         if (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata)) throw Object.assign(new Error("metadata must be an object"), { status: 400 });
         job.metadata = normalizeMetadata({ ...job.metadata, ...input.metadata }); await saveJob(job);
+        return json(200, publicJob(job));
+      }
+      if (action === "stages/garment/upload" && request.method === "POST") {
+        // Free mode: the browser sends a cutout with a transparent background
+        if (job.mode !== "free") throw Object.assign(new Error("Only free-mode imports accept uploaded cutouts"), { status: 409 });
+        const input = await body(request);
+        const image = decodeImage(input);
+        let framed;
+        try {
+          framed = await frameTransparentGarment(await normalizeImage(image.data), 1024, 0.88);
+        } catch {
+          throw Object.assign(new Error("לא נמצא בגד בתמונה אחרי הסרת הרקע. נסו תמונה של הבגד לבד על רקע פשוט."), { status: 400 });
+        }
+        const stage = job.stages.garment;
+        stage.attempts += 1;
+        const outputName = `garment-${stage.attempts}.png`;
+        await store.setBytes(jobKey(job.id, outputName), framed);
+        Object.assign(stage, { status: "review", decision: null, error: null, assetUrl: `${ASSET_ROOT}/${job.id}/${outputName}`, updatedAt: new Date().toISOString() });
+        await saveJob(job);
         return json(200, publicJob(job));
       }
       const cleanupAction = action.match(/^stages\/garment\/(cleanup-preview|cleanup-accept)$/);
@@ -2420,6 +2443,7 @@ Respond in strict JSON format:
         const [, stageName, decision] = stageMatch;
         if (!STAGES.has(stageName)) throw Object.assign(new Error("Invalid stage"), { status: 400 });
         if (decision === "regenerate") {
+          if (job.mode === "free") throw Object.assign(new Error("בייבוא החינמי אין יצירה מחדש. מחקו את הפריט והעלו שוב."), { status: 400 });
           if (stageName === "crop") throw Object.assign(new Error("Upload the image again to create new crops"), { status: 400 });
           const input = await body(request);
           job.stages[stageName].prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 1200) || null : null;
@@ -2439,8 +2463,9 @@ Respond in strict JSON format:
         job.stages[stageName].updatedAt = new Date().toISOString();
         const currentSetup = await setupStatus(job.wardrobeId);
         const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
-        const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && currentSetup.hasModelReference;
-        if (stageName === "garment" && decision === "approve" && !currentSetup.hasModelReference) {
+        const skipModeled = job.mode === "free" || !currentSetup.hasModelReference;
+        const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && !skipModeled;
+        if (stageName === "garment" && decision === "approve" && skipModeled) {
           job.stages.modeled.status = "skipped";
           job.status = "complete";
         }
