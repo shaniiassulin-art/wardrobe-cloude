@@ -912,6 +912,24 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
   return sharp(bg).composite(composites).png().toBuffer();
 }
 
+// Account problems (no credits, bad key) get a clear Hebrew message and an
+// `accountProblem` flag so callers can tell the user instead of failing silently.
+export function openAIError(status, result = {}, fallback = "OpenAI request failed") {
+  const code = result.error?.code || result.error?.type || "";
+  let message = result.error?.message || fallback;
+  let accountProblem = false;
+  if (code === "insufficient_quota" || code === "billing_hard_limit_reached" || /quota|billing/i.test(message)) {
+    message = "נגמרו הקרדיטים בחשבון OpenAI. אפשר להטעין יתרה ב-platform.openai.com ← Billing ולנסות שוב.";
+    accountProblem = true;
+  } else if (status === 401 || code === "invalid_api_key") {
+    message = "המפתח של OpenAI לא תקין או בוטל. צריך לעדכן אותו בהגדרות של Netlify.";
+    accountProblem = true;
+  } else if (status === 429) {
+    message = "OpenAI עמוס כרגע או שהגעת למגבלת הבקשות. נסו שוב בעוד דקה.";
+  }
+  return Object.assign(new Error(message), { accountProblem });
+}
+
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   const validEditModel = (!model || model.includes("dall-e") || model.includes("mini")) ? "gpt-image-2" : model;
@@ -941,7 +959,7 @@ async function openAIEdit({ key, baseUrl, model, prompt, images, size, backgroun
     method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form,
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error?.message || `OpenAI image request failed (${response.status})`);
+  if (!response.ok) throw openAIError(response.status, result, `OpenAI image request failed (${response.status})`);
   const encoded = result.data?.[0]?.b64_json;
   if (!encoded) throw new Error("OpenAI response did not contain image data");
   return Buffer.from(encoded, "base64");
@@ -962,7 +980,7 @@ async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
     }),
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error?.message || `OpenAI analysis failed (${response.status})`);
+  if (!response.ok) throw openAIError(response.status, result, `OpenAI analysis failed (${response.status})`);
   const outputText = result.output_text || result.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
   if (!outputText) throw new Error("OpenAI analysis returned no structured result");
   const parsed = JSON.parse(outputText);
@@ -1066,8 +1084,13 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   const outfitImageKey = (name) => `outfit-images/${name}`;
   const jobKey = (id, name = "job.json") => `jobs/${id}/${name}`;
 
-  async function loadModelReference() {
-    return store.getBytes(MODEL_REFERENCE_KEY);
+  // Each extra wardrobe has its own model photo; the main wardrobe uses the root one
+  function modelReferenceKey(wardrobeId = "user-shani") {
+    return getWardrobeKeys(wardrobeId).modelReference || MODEL_REFERENCE_KEY;
+  }
+
+  async function loadModelReference(wardrobeId = "user-shani") {
+    return store.getBytes(modelReferenceKey(wardrobeId));
   }
 
   function resolveWardrobeId(request, url) {
@@ -1284,7 +1307,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
       bytes = await generateFlatLayOutfit(garmentEntries);
     } else {
       const key = setting("OPENAI_API_KEY");
-      const modelData = await loadModelReference();
+      const modelData = await loadModelReference(wardrobeId);
 
       if (!key || !modelData) {
         if (modelData) {
@@ -1345,6 +1368,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
             prompt,
           });
         } catch (err) {
+          if (err.accountProblem) throw Object.assign(err, { status: 402 });
           console.warn("OpenAI outfit generation error, fallback to fitting:", err.message);
         }
 
@@ -1695,13 +1719,11 @@ Respond in strict JSON format:
 
   async function setupStatus(wardrobeId = "user-shani") {
     const hasApiKey = Boolean(setting("OPENAI_API_KEY").trim()) || Boolean(process.env.GEMINI_API_KEY) || true;
-    const { modelReference } = getWardrobeKeys(wardrobeId);
-    const hasModelReference = (modelReference && await store.exists(modelReference)) || await store.exists(MODEL_REFERENCE_KEY);
     return {
       ready: true,
       hasApiKey,
-      hasModelReference: Boolean(hasModelReference),
-      modelReference: MODEL_REFERENCE_KEY,
+      hasModelReference: await store.exists(modelReferenceKey(wardrobeId)),
+      modelReference: modelReferenceKey(wardrobeId),
     };
   }
 
@@ -1727,8 +1749,8 @@ Respond in strict JSON format:
     await store.setJSON(getWardrobeKeys(wardrobeId).importedFile, records);
   }
 
-  async function persistImported(job, includeModeled = false, wardrobeId = "user-shani") {
-    const wId = wardrobeId || job.wardrobeId || "user-shani";
+  async function persistImported(job, includeModeled = false) {
+    const wId = job.wardrobeId || "user-shani";
     const id = `import-${job.id}`;
     const garmentName = `${id}-garment.png`;
     const garmentSource = job.stages.garment.assetUrl
@@ -1831,7 +1853,7 @@ Respond in strict JSON format:
             ? path.basename(new URL(current.stages.garment.assetUrl, "http://localhost").pathname)
             : `garment-${current.stages.garment.attempts}.png`;
           const garment = { data: await requireBytes(jobKey(current.id, garmentName), "Garment image not found"), mime: "image/png", name: "garment.png" };
-          const modelData = await loadModelReference();
+          const modelData = await loadModelReference(current.wardrobeId);
           if (!modelData) {
             const fresh = await loadJob(current.id);
             fresh.stages.modeled.status = "skipped";
@@ -1845,6 +1867,8 @@ Respond in strict JSON format:
             try {
               bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
             } catch (modelError) {
+              // Fail visibly so the user knows to fix their OpenAI account
+              if (modelError.accountProblem) throw modelError;
               console.warn("Modeled image generation fallback:", modelError.message);
               bytes = await fitItemOnModel(model.data, garment.data, {
                 name: current.metadata?.name,
@@ -1883,7 +1907,7 @@ Respond in strict JSON format:
 
   // Re-dresses every wardrobe item on a newly uploaded model reference.
   async function refitModeledPhotos(wardrobeId) {
-    const modelData = await loadModelReference();
+    const modelData = await loadModelReference(wardrobeId);
     if (!modelData) return;
     const records = await loadImported(wardrobeId);
     let changed = false;
@@ -2048,10 +2072,7 @@ Respond in strict JSON format:
           const input = await body(request, 50 * 1024 * 1024);
           const image = decodeImage(input);
           const normalized = await normalizeImage(image.data);
-          await store.setBytes(MODEL_REFERENCE_KEY, normalized);
-
-          const { modelReference } = getWardrobeKeys(wId);
-          if (modelReference) await store.setBytes(modelReference, normalized);
+          await store.setBytes(modelReferenceKey(wId), normalized);
 
           const status = await setupStatus(wId);
           // Re-dress existing items on the new photo without blocking the response
@@ -2066,8 +2087,7 @@ Respond in strict JSON format:
       }
       if (url.pathname === "/api/import/model-reference" && (request.method === "GET" || request.method === "HEAD")) {
         const wId = resolveWardrobeId(request, url);
-        const { modelReference } = getWardrobeKeys(wId);
-        const data = (modelReference && await store.getBytes(modelReference)) || await loadModelReference();
+        const data = await loadModelReference(wId);
         if (!data) return json(404, { error: "No model reference photo found" });
         return imageResponse(data, { cache: "no-store", head: request.method === "HEAD" });
       }
@@ -2110,7 +2130,7 @@ Respond in strict JSON format:
         const record = records.find((item) => item.id === id);
         if (!record) return json(404, { error: "Wardrobe item not found" });
 
-        const modelData = await loadModelReference();
+        const modelData = await loadModelReference(wId);
         if (!modelData) {
           return json(400, { error: "Reference photo is required. Please upload your reference photo first so the AI can model the look on you." });
         }
@@ -2139,6 +2159,7 @@ Respond in strict JSON format:
               prompt: basePrompt,
             });
           } catch (modelError) {
+            if (modelError.accountProblem) return json(402, { error: modelError.message });
             bytes = await fitItemOnModel(model.data, garment.data, {
               name: record.name,
               part: record.part,
@@ -2295,6 +2316,7 @@ Respond in strict JSON format:
         const normalizedImage = await normalizeImage(image.data);
         const key = setting("OPENAI_API_KEY");
         let detected = [];
+        let warning = null;
         if (process.env.GEMINI_API_KEY) {
           try {
             detected = (await geminiAnalyze({ image: normalizedImage, mime: "image/png" })).map(normalizeMetadata);
@@ -2303,7 +2325,10 @@ Respond in strict JSON format:
         if (!detected.length && key) {
           try {
             detected = (await openAIAnalyze({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_VISION_MODEL", "gpt-4o-mini"), image: normalizedImage, mime: "image/png" })).map(normalizeMetadata);
-          } catch {}
+          } catch (analysisError) {
+            // Continue with the whole photo as one item, but tell the user why
+            if (analysisError.accountProblem) warning = analysisError.message;
+          }
         }
         if (!detected.length) {
           let dominantHex = "#d8d0c2";
@@ -2334,14 +2359,15 @@ Respond in strict JSON format:
           job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
           await saveJob(job); jobs.push(publicJob(job));
         }
-        return json(202, { jobs, noClothingDetected: jobs.length === 0 });
+        return json(202, { jobs, noClothingDetected: jobs.length === 0, warning });
       }
       if (url.pathname === API_ROOT && request.method === "GET") {
         const ids = await store.listDirs("jobs").catch(() => []);
         const loadedJobs = (await Promise.all(ids.map((id) => loadJob(id)))).filter(Boolean);
         const hiddenJobs = loadedJobs.filter((job) => job.status === "complete" || job.stages.crop?.status === "rejected" || job.stages.garment.status === "rejected" || job.stages.modeled.status === "rejected");
         await Promise.all(hiddenJobs.map((job) => deleteJob(job.id)));
-        const jobs = loadedJobs.filter((job) => !hiddenJobs.includes(job)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const wId = resolveWardrobeId(request, url);
+        const jobs = loadedJobs.filter((job) => !hiddenJobs.includes(job) && (job.wardrobeId || "user-shani") === wId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         return json(200, jobs.map(publicJob));
       }
       const match = url.pathname.match(/^\/api\/import\/jobs\/([a-f0-9-]{36})(?:\/(.*))?$/i);
@@ -2411,7 +2437,7 @@ Respond in strict JSON format:
         job.stages[stageName].status = job.stages[stageName].decision;
         job.stages[stageName].error = null;
         job.stages[stageName].updatedAt = new Date().toISOString();
-        const currentSetup = await setupStatus();
+        const currentSetup = await setupStatus(job.wardrobeId);
         const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
         const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending" && currentSetup.hasModelReference;
         if (stageName === "garment" && decision === "approve" && !currentSetup.hasModelReference) {

@@ -301,6 +301,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
         const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
         const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
         const createdJobs = result.jobs || [result];
+        if (result.warning) { setError(result.warning); setOpen(true); }
         if (!createdJobs.length && result.noClothingDetected) {
           setNotice({ tone: "complete", text: "No clothing detected", detail: `We couldn’t find a distinct wearable item in ${file.name}. Try a clearer or more tightly framed image.` });
           setOpen(true);

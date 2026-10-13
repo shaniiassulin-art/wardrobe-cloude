@@ -2451,3 +2451,43 @@ button { font: inherit; }
 .login-card input:focus-visible { outline: none; border-color: var(--ink); }
 .login-card .primary-button { justify-content: center; padding: 12px; }
 .login-card .login-error { color: var(--accent); }
+
+/* Account modal: one calm column of sections */
+.user-account-modal { max-width: 480px; }
+.account-section { padding: 16px 0; border-top: 1px solid var(--line); }
+.account-section h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.account-row { display: flex; align-items: center; gap: 10px; }
+.account-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+.account-input:focus-visible { outline: none; border-color: var(--ink); }
+.account-stats { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.account-hint { flex: 1; margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.account-model-thumb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.account-model-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.account-steps { margin: 0 0 12px; padding-inline-start: 20px; font-size: 13px; line-height: 1.7; }
+.account-more summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+.account-more[open] summary { margin-bottom: 10px; }
+.account-more .account-hint { margin-bottom: 12px; }
+.account-wardrobes { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.account-wardrobes li { display: flex; align-items: center; gap: 8px; }
+.account-wardrobe-name { flex: 1; min-width: 0; font-size: 14px; }
+.account-error { margin: 8px 0 0; font-size: 13px; color: var(--accent); }
+.account-footer { padding-top: 16px; border-top: 1px solid var(--line); }

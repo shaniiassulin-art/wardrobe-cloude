@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CloudCheck, Copy, DeviceMobile, EnvelopeSimple, FloppyDisk, Key, LinkSimple, MagicWand, Plus, QrCode, Suitcase, Trash, User, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 
@@ -691,468 +691,199 @@ function UserAccountModal({
   onSwitchWardrobe,
   onConnectOrNewWardrobe,
   onDeleteWardrobe,
-  onRefreshSync,
   onClose,
 }) {
-  const [activeTab, setActiveTab] = useState("switch");
-  const [name, setName] = useState(user?.name || "שני אסולין");
-  const [email, setEmail] = useState(user?.email || "shaniiassulin@gmail.com");
+  const [name, setName] = useState(user?.name || "");
   const [saving, setSaving] = useState(false);
-  const [synced, setSynced] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const modalModelInputRef = useRef(null);
-
-  // New wardrobe connection form
-  const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [moreOpen, setMoreOpen] = useState(activeWardrobeId !== "user-shani");
+  const modelInputRef = useRef(null);
+  const otherWardrobes = wardrobesList.filter((w) => w.id !== activeWardrobeId);
 
   useEffect(() => {
     if (user?.name) setName(user.name);
-    if (user?.email) setEmail(user.email);
   }, [user]);
 
-  // Construct mobile URL that automatically carries the active wardrobe query
-  const mobileUrl = useMemo(() => {
+  const siteUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
     const base = window.location.origin + window.location.pathname;
-    if (!activeWardrobeId || activeWardrobeId === "user-shani") {
-      return base;
-    }
-    return `${base}?wardrobe=${encodeURIComponent(activeWardrobeId)}`;
+    return !activeWardrobeId || activeWardrobeId === "user-shani" ? base : `${base}?wardrobe=${encodeURIComponent(activeWardrobeId)}`;
   }, [activeWardrobeId]);
 
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(mobileUrl)}`;
+  const nameChanged = name.trim() && name.trim() !== (user?.name || "");
 
-  const handleCopyLink = () => {
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(mobileUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    }
-  };
-
-  const handleManualSync = async () => {
-    setRefreshing(true);
-    try {
-      await onRefreshSync?.();
-    } finally {
-      setTimeout(() => setRefreshing(false), 400);
-    }
-  };
-
-  const handleSubmitProfile = async (e) => {
-    e.preventDefault();
+  const handleSaveName = async (event) => {
+    event.preventDefault();
+    if (!nameChanged) return;
     setSaving(true);
     try {
-      await onSaveUser({ name: name.trim() || user?.name || "שני אסולין", email: email.trim() });
-      setSynced(true);
-      setTimeout(() => setSynced(false), 2000);
+      await onSaveUser({ name: name.trim() });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } catch {} finally {
       setSaving(false);
     }
   };
 
-  const handleConnectSubmit = async (e) => {
-    e.preventDefault();
-    if (!newEmail.trim()) return;
-    setConnecting(true);
-    setConnectError("");
+  const handleCopyLink = () => {
+    navigator?.clipboard?.writeText?.(siteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleCreateWardrobe = async (event) => {
+    event.preventDefault();
+    if (!newName.trim()) return;
+    setCreating(true);
+    setCreateError("");
     try {
-      await onConnectOrNewWardrobe({
-        email: newEmail.trim(),
-        name: newName.trim(),
-      });
-      setNewEmail("");
+      await onConnectOrNewWardrobe({ name: newName.trim() });
       setNewName("");
-      setActiveTab("profile");
     } catch (err) {
-      setConnectError(err.message || "שגיאה בחיבור לארון");
+      setCreateError(err.message || "לא ניתן ליצור ארון כרגע");
     } finally {
-      setConnecting(false);
+      setCreating(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/import/logout", { method: "POST" }).catch(() => {});
+    window.location.reload();
   };
 
   return (
     <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="builder-modal user-account-modal">
+      <div className="builder-modal user-account-modal" role="dialog" aria-modal="true" aria-labelledby="account-title">
         <header className="builder-header">
-          <div>
-            <span style={{ fontSize: "11px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)", fontWeight: "600" }}>
-              ניהול ארונות וחשבונות
-            </span>
-            <h2 style={{ margin: "4px 0 0", fontSize: "20px" }}>
-              {activeTab === "switch" ? "החלפת ארון והתחברות" : activeTab === "mobile" ? "חיבור מהטלפון הנייד" : activeTab === "qa" ? "שאלות, מפתחות וסנכרון" : "פרופיל אישי וסנכרון"}
-            </h2>
-          </div>
+          <h2 id="account-title">הארון שלי</h2>
           <button className="import-icon-button" type="button" onClick={onClose} aria-label="סגור">
             <X size={20} />
           </button>
         </header>
 
-        {/* NAVIGATION TABS */}
-        <nav className="user-modal-tabs" aria-label="לשוניות חשבון">
-          <button
-            type="button"
-            className={`user-modal-tab${activeTab === "switch" ? " active" : ""}`}
-            onClick={() => setActiveTab("switch")}
-          >
-            <ArrowsLeftRight size={15} weight="bold" />
-            <span>החלפת ארון / התחברות</span>
-          </button>
-          <button
-            type="button"
-            className={`user-modal-tab${activeTab === "profile" ? " active" : ""}`}
-            onClick={() => setActiveTab("profile")}
-          >
-            <User size={15} />
-            <span>הארון הפעיל</span>
-          </button>
-          <button
-            type="button"
-            className={`user-modal-tab${activeTab === "mobile" ? " active" : ""}`}
-            onClick={() => setActiveTab("mobile")}
-          >
-            <DeviceMobile size={15} />
-            <span>פתיחה בנייד (QR)</span>
-          </button>
-          <button
-            type="button"
-            className={`user-modal-tab${activeTab === "qa" ? " active" : ""}`}
-            onClick={() => setActiveTab("qa")}
-          >
-            <Key size={15} />
-            <span>מפתחות וענן (תשובות)</span>
-          </button>
-        </nav>
+        {/* 1. Who this wardrobe belongs to */}
+        <section className="account-section" aria-labelledby="account-name-title">
+          <h3 id="account-name-title">שם הארון</h3>
+          <form className="account-row" onSubmit={handleSaveName}>
+            <input
+              className="account-input"
+              type="text"
+              aria-label="שם הארון"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+            <button className="secondary-button" type="submit" disabled={saving || !nameChanged}>
+              {saving ? "שומר..." : saved ? <><Check size={14} /> נשמר</> : "שמירה"}
+            </button>
+          </form>
+          <p className="account-stats">
+            {stats.itemCount} פריטים · {stats.looksCount} לוקים · {stats.packedCount} במזוודה
+          </p>
+        </section>
 
-        {/* TAB 1: SWITCH OR CONNECT TO ANOTHER WARDROBE */}
-        {activeTab === "switch" && (
-          <div>
-            <p style={{ margin: "0 0 12px", fontSize: "13px", color: "var(--muted)" }}>
-              בחרי ארון קיים להתחברות, או הזיני אימייל/מזהה לפתיחת ארון נפרד:
+        {/* 2. Model photo */}
+        <section className="account-section" aria-labelledby="account-model-title">
+          <h3 id="account-model-title">תמונת מודל</h3>
+          <div className="account-row">
+            <div className="account-model-thumb">
+              {modelRefUrl ? <img src={modelRefUrl} alt="תמונת המודל הנוכחית" /> : <User size={22} aria-hidden="true" />}
+            </div>
+            <p className="account-hint">
+              {hasModelRef
+                ? "התמונה שעליה מלבישים את הבגדים והלוקים."
+                : "העלי תמונת גוף מלא שלך, כדי שאפשר יהיה להלביש עלייך את הבגדים."}
             </p>
-
-            <div className="wardrobe-list">
-              {wardrobesList.map((w) => {
-                const isActive = w.id === activeWardrobeId;
-                return (
-                  <div key={w.id} className={`wardrobe-item-card${isActive ? " is-active" : ""}`}>
-                    <div className="wardrobe-item-info">
-                      <div className="wardrobe-avatar">
-                        {w.name ? w.name.slice(0, 1) : "א"}
-                      </div>
-                      <div className="wardrobe-item-meta">
-                        <span className="wardrobe-item-name">{w.name || `ארון ${w.id}`}</span>
-                        <span className="wardrobe-item-email">
-                          {w.email || w.id} • {w.itemCount ?? 0} פריטים
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      {isActive ? (
-                        <span className="wardrobe-badge-active">
-                          <Check size={12} weight="bold" /> פעיל כעת
-                        </span>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <button
-                            type="button"
-                            className="wardrobe-switch-btn"
-                            onClick={() => onSwitchWardrobe(w.id)}
-                          >
-                            התחברי לארון זה
-                          </button>
-                          {!w.isDefault && (
-                            <button
-                              type="button"
-                              className="import-icon-button"
-                              title="מחק ארון זה"
-                              onClick={() => {
-                                if (window.confirm(`האם את בטוחה שברצונך למחוק את ${w.name}?`)) {
-                                  onDeleteWardrobe(w.id);
-                                }
-                              }}
-                              style={{ width: "26px", height: "26px" }}
-                            >
-                              <Trash size={14} />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* CONNECT WITH EMAIL OR CREATE NEW WARDROBE */}
-            <div className="wardrobe-create-box">
-              <h4>
-                <EnvelopeSimple size={16} weight="duotone" color="var(--accent)" />
-                <span>התחברות לארון עם אימייל או מזהה חדש</span>
-              </h4>
-              <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--muted)", lineHeight: "1.4" }}>
-                הזיני כתובת אימייל (לדוגמה <code>danielle@gmail.com</code>). אם כבר יש ארון עם מייל זה – תתחברי אליו מיד. אם זה מייל חדש – ייווצר ארון אישי נקי ונפרד בענן!
-              </p>
-
-              <form onSubmit={handleConnectSubmit}>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
-                  <div style={{ flex: 1, minWidth: "180px" }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                      אימייל או קוד זיהוי
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="למשל: danielle@gmail.com"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      required
-                      style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--line)", borderRadius: "3px", fontSize: "13px", background: "white", color: "var(--ink)", fontFamily: "inherit" }}
-                    />
-                  </div>
-                  <div style={{ flex: 1, minWidth: "140px" }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", color: "var(--muted)", marginBottom: "4px" }}>
-                      שם בעל/ת הארון (אופציונלי)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="למשל: דניאל"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      style={{ width: "100%", padding: "7px 10px", border: "1px solid var(--line)", borderRadius: "3px", fontSize: "13px", background: "white", color: "var(--ink)", fontFamily: "inherit" }}
-                    />
-                  </div>
-                </div>
-
-                {connectError && (
-                  <p style={{ color: "var(--accent)", fontSize: "12px", margin: "0 0 8px" }}>{connectError}</p>
-                )}
-
-                <button
-                  type="submit"
-                  className="primary-button"
-                  disabled={connecting}
-                  style={{ width: "100%", padding: "8px", fontSize: "13px" }}
-                >
-                  {connecting ? "מתחבר..." : "התחברי לארון זה / צרי ארון חדש"}
-                </button>
-              </form>
-            </div>
+            <input
+              ref={modelInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onUploadModelRef?.(file);
+                e.target.value = "";
+              }}
+            />
+            <button className="secondary-button" type="button" onClick={() => modelInputRef.current?.click()} disabled={uploadingModelRef}>
+              {uploadingModelRef ? "מעלה..." : hasModelRef ? "החלפה" : "העלאה"}
+            </button>
           </div>
-        )}
+        </section>
 
-        {/* TAB 2: CURRENT PROFILE & DETAILS */}
-        {activeTab === "profile" && (
-          <div>
-            <div className="user-sync-banner">
-              <div className="user-sync-banner-icon">
-                <CloudCheck size={20} weight="bold" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <strong style={{ fontSize: "13px", color: "#1b5e20" }}>
-                    מסונכרן עם השרת בזמן אמת ✓
-                  </strong>
-                  <button
-                    type="button"
-                    onClick={handleManualSync}
-                    style={{ background: "transparent", border: "none", color: "#2e7d32", fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px", padding: "2px 6px" }}
-                    title="בדוק עדכונים חדשים מהשרת"
-                  >
-                    <ArrowClockwise size={13} className={refreshing ? "spin" : ""} />
-                    <span>רענן סנכרון</span>
+        {/* 3. Phone */}
+        <section className="account-section" aria-labelledby="account-phone-title">
+          <h3 id="account-phone-title">פתיחה בטלפון</h3>
+          <ol className="account-steps">
+            <li>פתחי בטלפון את הקישור של האתר.</li>
+            <li>היכנסי עם הסיסמה של האתר.</li>
+            <li>בתפריט השיתוף של הדפדפן בחרי "הוספה למסך הבית".</li>
+          </ol>
+          <button type="button" className="secondary-button" onClick={handleCopyLink}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            <span>{copied ? "הקישור הועתק" : "העתקת הקישור"}</span>
+          </button>
+        </section>
+
+        {/* 4. Extra wardrobes (rarely needed, so collapsed) */}
+        <details className="account-section account-more" open={moreOpen} onToggle={(e) => setMoreOpen(e.currentTarget.open)}>
+          <summary>ארונות נוספים</summary>
+          <p className="account-hint">
+            ארון נוסף הוא מלתחה נפרדת באותו אתר, למשל לבת משפחה. לכל ארון יש בגדים, לוקים ותמונת מודל משלו.
+            כל מי שיודע את סיסמת האתר יכול לפתוח את כל הארונות.
+          </p>
+
+          {otherWardrobes.length > 0 && (
+            <ul className="account-wardrobes">
+              {otherWardrobes.map((w) => (
+                <li key={w.id}>
+                  <span className="account-wardrobe-name">
+                    {w.name || w.id}
+                    <span className="account-hint"> · {w.itemCount ?? 0} פריטים</span>
+                  </span>
+                  <button type="button" className="secondary-button" onClick={() => onSwitchWardrobe(w.id)}>
+                    <ArrowsLeftRight size={14} /> מעבר
                   </button>
-                </div>
-                <span style={{ fontSize: "12px", color: "#2e7d32", display: "block", marginTop: "2px" }}>
-                  הארון הפעיל: <strong>{user?.name || "שני אסולין"}</strong> ({user?.email || "shaniiassulin@gmail.com"})
-                </span>
-              </div>
-            </div>
+                  {!w.isDefault && (
+                    <button
+                      type="button"
+                      className="import-icon-button"
+                      aria-label={`מחיקת הארון ${w.name || w.id}`}
+                      onClick={() => {
+                        if (window.confirm(`למחוק את הארון "${w.name || w.id}" וכל מה שבו? אי אפשר לבטל את זה.`)) onDeleteWardrobe(w.id);
+                      }}
+                    >
+                      <Trash size={15} />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
 
-            <div className="user-stats-grid">
-              <div className="user-stat-card">
-                <span className="user-stat-number">{stats.itemCount}</span>
-                <span className="user-stat-label">פריטים בארון</span>
-              </div>
-              <div className="user-stat-card">
-                <span className="user-stat-number">{stats.looksCount}</span>
-                <span className="user-stat-label">לוקים שנוצרו</span>
-              </div>
-              <div className="user-stat-card">
-                <span className="user-stat-number">{stats.packedCount}</span>
-                <span className="user-stat-label">ארוזים במזוודה</span>
-              </div>
-            </div>
+          <form className="account-row" onSubmit={handleCreateWardrobe}>
+            <input
+              className="account-input"
+              type="text"
+              aria-label="שם לארון חדש"
+              placeholder="שם לארון חדש"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+            <button className="secondary-button" type="submit" disabled={creating || !newName.trim()}>
+              <Plus size={14} /> {creating ? "יוצר..." : "יצירה"}
+            </button>
+          </form>
+          {createError && <p className="account-error" role="alert">{createError}</p>}
+        </details>
 
-            {/* MODEL REFERENCE SECTION */}
-            <div style={{ background: "rgba(25, 24, 22, 0.03)", border: "1px solid var(--line)", borderRadius: "4px", padding: "12px 14px", marginBottom: "18px", display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: "var(--paper)", border: "1px solid var(--line)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {modelRefUrl ? (
-                  <img src={modelRefUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <User size={22} style={{ opacity: 0.4 }} />
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ display: "block", fontSize: "13px", color: "var(--ink)" }}>
-                  {hasModelRef ? "תמונת מודל פעילה ✓" : "תמונת מודל (להלבשה וירטואלית)"}
-                </strong>
-                <span style={{ display: "block", fontSize: "11px", color: "var(--muted)", marginTop: "2px", lineHeight: "1.3" }}>
-                  תמונת גוף מלא שמשמשת להלבשת הלוקים עלייך. נשמרת בענן.
-                </span>
-              </div>
-              <input
-                ref={modalModelInputRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f && onUploadModelRef) onUploadModelRef(f);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => modalModelInputRef.current?.click()}
-                disabled={uploadingModelRef}
-                style={{ fontSize: "12px", padding: "6px 12px", whiteSpace: "nowrap" }}
-              >
-                {uploadingModelRef ? "מעלה..." : hasModelRef ? "החלפת תמונה" : "העלאת תמונה"}
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitProfile}>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: "4px" }}>
-                  שם בעלת הארון הפעיל
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--line)", borderRadius: "3px", fontSize: "13px", background: "transparent", color: "var(--ink)", fontFamily: "inherit" }}
-                />
-              </div>
-
-              <div style={{ marginBottom: "18px" }}>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: "4px" }}>
-                  כתובת אימייל
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  style={{ width: "100%", padding: "8px 12px", border: "1px solid var(--line)", borderRadius: "3px", fontSize: "13px", background: "transparent", color: "var(--ink)", fontFamily: "inherit" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "14px" }}>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setActiveTab("switch")}
-                >
-                  <ArrowsLeftRight size={14} />
-                  <span>החלף לארון אחר</span>
-                </button>
-                <button className="primary-button" type="submit" disabled={saving}>
-                  {saving ? "שומר שינויים..." : synced ? "נשמר בהצלחה ✓" : "שמור שינויים בארון זה"}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* TAB 3: MOBILE CONNECTION & QR CODE */}
-        {activeTab === "mobile" && (
-          <div className="mobile-sync-card" style={{ margin: 0 }}>
-            <div className="mobile-sync-header">
-              <h4>
-                <DeviceMobile size={18} weight="duotone" color="var(--accent)" />
-                <span>פתיחת הארון של {user?.name || "שני"} בטלפון הנייד</span>
-              </h4>
-              <span style={{ fontSize: "11px", color: "#2e7d32", fontWeight: "600" }}>סנכרון ענן ישיר</span>
-            </div>
-            <div className="mobile-sync-body">
-              <div className="mobile-qr-wrap" title="סרקי את הקוד במצלמת הטלפון לפתיחת הארון בנייד">
-                <img src={qrCodeUrl} alt="קוד QR לפתיחה בנייד" />
-              </div>
-              <div className="mobile-sync-details">
-                <p style={{ margin: 0, fontSize: "12.5px", color: "var(--ink)", lineHeight: "1.4" }}>
-                  סרקי את הקוד במצלמת הנייד או העתיקי את הקישור הישיר. הקישור יפתח ישירות את הארון של <strong>{user?.name || "שני"}</strong>.
-                </p>
-                <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)", lineHeight: "1.4" }}>
-                  כל בגד שתצלמי או תעלי דרך הטלפון <strong>יישמר בענן ויופיע מיד במחשב</strong>!
-                </p>
-                <div className="mobile-url-box">
-                  <LinkSimple size={13} />
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mobileUrl}</span>
-                </div>
-                <button type="button" className="mobile-copy-btn" onClick={handleCopyLink}>
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copied ? "הקישור הועתק! ✓" : "העתק קישור ישיר לנייד"}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: Q&A (KEYS & CLOUD EXPLAINER) */}
-        {activeTab === "qa" && (
-          <div className="account-qa-box" style={{ margin: 0 }}>
-            <div className="account-qa-item">
-              <div className="account-qa-title">
-                <span>🔑 למה לא צריך מפתחות (API Keys) בטלפון?</span>
-              </div>
-              <p className="account-qa-text">
-                <strong>אין צורך להגדיר או לשמור שום מפתחות בטלפון!</strong> כל מנגנוני ה-AI (ניתוח וזיהוי פריטי לבוש, גזירת הבגדים, הפקת לוקים והלבשה על מודל) מעובדים <strong>ישירות בשרת בענן</strong>. כשאת פותחת את האתר מהטלפון הנייד, כל היכולות זמינות מיידית ללא צורך בהגדרת מפתח.
-              </p>
-            </div>
-
-            <div className="account-qa-item">
-              <div className="account-qa-title">
-                <span>✉️ איך אני יכולה להתחבר עם מייל או מזהה אחר לארון אחר?</span>
-              </div>
-              <p className="account-qa-text">
-                בלשונית <strong>'החלפת ארון / התחברות'</strong> למעלה, הזיני את כתובת האימייל או קוד הזיהוי (למשל <code>danielle@gmail.com</code>). המערכת תחבר אותך מיד לארון המשויך למייל הזה, או תיצור ארון חדש ונקי עם פריטים ומזוודה משלו! תוכלי גם לפתוח ישירות מהנייד באמצעות הקישור הייעודי.
-              </p>
-            </div>
-
-            <div className="account-qa-item">
-              <div className="account-qa-title">
-                <span>☁️ איפה נשמרים כל הבגדים שלי?</span>
-              </div>
-              <p className="account-qa-text">
-                כל הבגדים, התמונות שחתכת, הלוקים והמזוודה שמורים <strong>בשרת המרכזי בענן</strong> (בתיקיית הארון שלך). הנתונים אינם תלויים בדפדפן הזמני – ולכן גם אם תעשי שינויים, תמחקי קוקיז או תעברי מכשיר, הכל נשמר לצמיתות ומסונכרן מיידית!
-              </p>
-            </div>
-
-            <div className="account-qa-item">
-              <div className="account-qa-title">
-                <span>📱 איך המערכת מזהה אותי?</span>
-              </div>
-              <p className="account-qa-text">
-                המערכת מזהה אותך לפי הארון הפעיל שנבחר (או לפי הקישור הייעודי שפתחת). הדפדפן שומר את הארון הפעיל שלך בזיכרון המכשיר, ותוכלי להחליף בין ארונות בלחיצה אחת בכל עת.
-              </p>
-            </div>
-
-            <div className="account-qa-item">
-              <div className="account-qa-title">
-                <span>📸 איך להעלות תמונת מודל דרך הטלפון הנייד?</span>
-              </div>
-              <p className="account-qa-text">
-                תוכלי להעלות תמונה בכל עת דרך כפתור <strong>'העלאת תמונת מודל'</strong> בראש העמוד, או ישירות בלשונית <strong>'הארון הפעיל'</strong> בחלון זה. ניתן לבחור תמונה מהגלריה או לצלם ישירות במצלמת הנייד. התמונה מכווצת ונשמרת בענן בשרת לצורך הלבשת הלוקים עלייך.
-              </p>
-            </div>
-          </div>
-        )}
+        <footer className="account-footer">
+          <button type="button" className="delete-button" onClick={handleLogout}>התנתקות</button>
+        </footer>
       </div>
     </div>
   );
@@ -2518,14 +2249,14 @@ export function App() {
                 type="button"
                 className="user-account-header-btn"
                 onClick={() => setUserModalOpen(true)}
-                title="ניהול והחלפת ארון – פרטים וסנכרון ענן"
+                title="הארון שלי: שם, תמונת מודל, טלפון וארונות נוספים"
               >
                 <span className="user-account-avatar">
                   {currentUser?.name ? currentUser.name.slice(0, 1) : "ש"}
                 </span>
                 <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", lineHeight: "1.15", textAlign: "right" }}>
                   <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--ink)" }}>{currentUser?.name || "שני אסולין"}</span>
-                  <span style={{ fontSize: "10px", color: "var(--muted)" }}>החלפת ארון / פרטים</span>
+                  <span style={{ fontSize: "10px", color: "var(--muted)" }}>הארון שלי</span>
                 </span>
                 <CaretDown size={11} weight="bold" style={{ opacity: 0.6, marginInlineStart: "2px" }} />
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
@@ -2721,9 +2452,6 @@ export function App() {
           onSwitchWardrobe={handleSwitchWardrobe}
           onConnectOrNewWardrobe={handleConnectOrNewWardrobe}
           onDeleteWardrobe={handleDeleteWardrobe}
-          onRefreshSync={async () => {
-            await Promise.all([fetchWardrobe(), fetchSuitcases(), fetchOutfits(), fetchWardrobesList(), fetchUserProfile()]);
-          }}
           onClose={() => setUserModalOpen(false)}
         />
       )}
@@ -2774,7 +2502,7 @@ export function App() {
         />
       )}
 
-      <WardrobeImportFlow hidden={activeType === "looks"} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks"} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }
