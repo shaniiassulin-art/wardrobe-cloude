@@ -166,7 +166,6 @@ async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
 const IMPORT_MODES = [
   { id: "free", title: "חינמי", detail: "גזירה במכשיר, בלי עלות", note: "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז. בלי עלות." },
   { id: "photoroom", title: "קטלוג פוטורום", detail: "בגד משוחזר כמו בחנות", note: "כל בגד מופרד במכשיר ואז פוטורום משחזר אותו כתמונת קטלוג מקצועית. עולה בערך 37 אגורות לבגד.", sandboxNote: "מצב ניסיון של פוטורום: חינם, עם סימן מים, עד 100 בגדים ביום." },
-  { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה, כמעט חינם", note: "ה-AI יוצר תמונת מוצר נקייה של כל בגד ומשלים חלקים מוסתרים. עולה בערך 3 אגורות לבגד בחשבון OpenAI." },
   { id: "ai", title: "AI מלא", detail: "קטלוג והלבשה על המודל", note: "תמונת מוצר באיכות גבוהה ותמונה של הבגד עלייך. עולה בערך 2 ש\"ח לבגד בחשבון OpenAI." },
 ];
 
@@ -175,7 +174,7 @@ function availableModes(setup) {
   return IMPORT_MODES.filter((option) =>
     option.id === "free"
     || (option.id === "photoroom" && setup?.hasPhotoroomKey)
-    || (["catalog", "ai"].includes(option.id) && setup?.hasOpenAIKey));
+    || (option.id === "ai" && setup?.hasOpenAIKey));
 }
 
 function ImportModeToggle({ mode, modes, sandbox, onChange }) {
@@ -446,6 +445,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
       setOpen(true);
     }
     if (!images.length) return;
+    setOpen(true);
     for (const original of images) {
       setUploadStatus(images.length > 1 ? `מעלה את ${original.name}...` : "מעלה את התמונה...");
       try {
@@ -546,7 +546,9 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
 
   const active = jobs[jobs.length - 1];
   const setupRequired = setup?.ready === false;
-  const activeStatus = removalStatus || uploadStatus ? { tone: "processing", text: removalStatus || uploadStatus } : setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
+  const liveStatus = removalStatus || uploadStatus;
+  const livePercent = Number(liveStatus.match(/(\d+)%/)?.[1]);
+  const activeStatus = setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && (reviewStageFor(job) || hasCleanupFailure(job)));
   const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || jobs.find((job) => hasCleanupFailure(job)) || active;
@@ -573,7 +575,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           aria-label={setupRequired ? "הוראות הגדרה" : hasImportActivity ? "התקדמות ייבוא" : "הוספת בגדים"}
         >
           <span className="import-tray__icon">
-            {activeStatus?.tone === "processing" ? <SpinnerGap size={19} className="import-spinner" /> : activeStatus?.tone === "error" ? <WarningCircle size={19} /> : readyCount ? <span className="import-count-badge">{readyCount}</span> : notice ? <X size={18} /> : <Plus size={19} />}
+            {liveStatus || activeStatus?.tone === "processing" ? <SpinnerGap size={19} className="import-spinner" /> : activeStatus?.tone === "error" ? <WarningCircle size={19} /> : readyCount ? <span className="import-count-badge">{readyCount}</span> : notice ? <X size={18} /> : <Plus size={19} />}
           </span>
           <span className="import-tray__label">{activeStatus?.text || "הוספת בגדים"}</span>
           {active && <img className="import-tray__preview" src={active.stages?.garment?.assetUrl || active.stages?.garment?.failedAssetUrl || active.stages?.crop?.assetUrl || active.originalAssetUrl} alt="" />}
@@ -592,6 +594,12 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           </header>
           {/* Always visible so the choice is never hidden below a long import list */}
           {!setupRequired && <ImportModeToggle mode={importMode} modes={modes} sandbox={setup?.photoroomSandbox} onChange={chooseMode} />}
+          {liveStatus && (
+            <div className="import-live-status" role="status" aria-live="polite">
+              <div className="import-live-status__text"><SpinnerGap size={16} className="import-spinner" /> <span>{liveStatus}</span></div>
+              <div className="import-progress__track"><div className={`import-live-status__bar${Number.isFinite(livePercent) ? "" : " is-indeterminate"}`} style={Number.isFinite(livePercent) ? { width: `${livePercent}%` } : undefined} /></div>
+            </div>
+          )}
           {!jobs.length ? setupRequired ? (
             <div className="import-drop-target import-setup-warning">
               <WarningCircle size={30} />

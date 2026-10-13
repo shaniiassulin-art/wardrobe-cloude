@@ -326,3 +326,10 @@
 .import-mode-note { margin: 0; font-size: 12px; color: var(--import-muted); text-align: center; }
 
 .import-popover > .import-mode { margin: 0 0 14px; }
+
+.import-live-status { display: grid; gap: 8px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--import-line); border-radius: 12px; }
+.import-live-status__text { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.import-live-status__bar { height: 100%; background: var(--import-ink); border-radius: inherit; transition: width 0.3s var(--import-ease); }
+.import-live-status__bar.is-indeterminate { width: 35%; animation: import-live-slide 1.2s ease-in-out infinite; }
+@keyframes import-live-slide { from { transform: translateX(200%); } to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) { .import-live-status__bar.is-indeterminate { animation: none; width: 100%; opacity: 0.4; } }
