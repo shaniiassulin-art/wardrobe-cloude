@@ -164,22 +164,21 @@ async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
 }
 
 const IMPORT_MODES = [
+  { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה", note: "ה-AI מזהה כל בגד בתמונה ויוצר לו תמונת מוצר נקייה. עולה בערך 3 אגורות לבגד." },
   { id: "free", title: "חינמי", detail: "גזירה במכשיר, בלי עלות", note: "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז. בלי עלות." },
   { id: "photoroom", title: "קטלוג פוטורום", detail: "בגד משוחזר כמו בחנות", note: "כל בגד מופרד במכשיר ואז פוטורום משחזר אותו כתמונת קטלוג מקצועית. עולה בערך 37 אגורות לבגד.", sandboxNote: "מצב ניסיון של פוטורום: חינם, עם סימן מים, עד 100 בגדים ביום." },
   { id: "ai", title: "AI מלא", detail: "קטלוג והלבשה על המודל", note: "תמונת מוצר באיכות גבוהה ותמונה של הבגד עלייך. עולה בערך 2 ש\"ח לבגד בחשבון OpenAI." },
 ];
 
-// Modes offered depend on which service keys are configured on the server
+// Imports use only the cheap OpenAI catalog. Without an OpenAI key (e.g. local
+// development) the free on-device mode is used instead.
 function availableModes(setup) {
-  return IMPORT_MODES.filter((option) =>
-    option.id === "free"
-    || (option.id === "photoroom" && setup?.hasPhotoroomKey)
-    || (option.id === "ai" && setup?.hasOpenAIKey));
+  return IMPORT_MODES.filter((option) => option.id === (setup?.hasOpenAIKey ? "catalog" : "free"));
 }
 
 function ImportModeToggle({ mode, modes, sandbox, onChange }) {
   if (modes.length < 2) {
-    return <p className="import-mode-note">ייבוא חינמי: הרקע מוסר במכשיר שלך, בלי AI ובלי עלות.</p>;
+    return modes[0] ? <p className="import-mode-note">{modes[0].note}</p> : null;
   }
   const current = modes.find((option) => option.id === mode) || modes[0];
   return (
@@ -339,7 +338,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   const [uploadStatus, setUploadStatus] = useState("");
   const modes = availableModes(setup);
   const canChooseMode = modes.length > 1;
-  const importMode = modes.some((option) => option.id === mode) ? mode : "free";
+  const importMode = modes.some((option) => option.id === mode) ? mode : (modes[0]?.id || "free");
   const chooseMode = (next) => {
     setMode(next);
     try { localStorage.setItem(MODE_STORAGE_KEY, next); } catch {}
