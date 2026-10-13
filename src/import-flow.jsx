@@ -297,7 +297,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     setDragging(false); setError(""); setNotice(null);
     for (const file of images) {
       try {
-        const imageDataUrl = await fileToDataUrl(file);
+        // Phone photos can exceed the hosted request size limit, so downscale first
+        const imageDataUrl = await compressImageForUpload(file, 1600, 0.9);
         const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl, metadata: { name: file.name.replace(/\.[^.]+$/, "") } }) });
         const createdJobs = result.jobs || [result];
         if (!createdJobs.length && result.noClothingDetected) {

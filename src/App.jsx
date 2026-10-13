@@ -2099,12 +2099,14 @@ export function App() {
     fetchOutfits();
     fetchUserProfile();
 
-    // Auto-sync across devices: poll every 4 seconds and whenever tab becomes active
+    // Auto-sync across devices: poll while visible and whenever the tab becomes active.
+    // Kept infrequent because every request counts toward the hosting quota.
     const interval = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       fetchWardrobe();
       fetchSuitcases();
       fetchOutfits();
-    }, 4000);
+    }, 20000);
 
     const onSync = () => {
       fetchWardrobe();

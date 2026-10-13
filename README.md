@@ -52,7 +52,7 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 - Detects every garment in a photo with the OpenAI Responses API
 - Extracts clean product cutouts with the OpenAI Images API
 - Generates an optional modeled editorial preview
-- Keeps originals, jobs, generated images, and the JSON database local in `data/`
+- Keeps originals, jobs, generated images, and the JSON database in `data/` locally, or in Netlify Blobs when deployed
 - Supports drag, drop, paste, editing, review, regeneration, and approval
 
 ## Configuration
@@ -63,8 +63,18 @@ If you are setting up Wardrobe for a user, ask how they want to import their clo
 | `OPENAI_VISION_MODEL` | `gpt-5.4-mini` |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` |
 | `OPENAI_IMAGE_QUALITY` | `high` |
-| `WARDROBE_MODEL_REFERENCE` | `data/model-reference.png` |
 | `WARDROBE_DATA_DIR` | `data` |
+| `APP_PASSWORD` | Optional locally, required on Netlify |
+
+## Deploy to Netlify
+
+The same API runs on Netlify: `netlify/functions/api.mjs` serves `/api/import/*`, data is stored in Netlify Blobs instead of `data/`, and AI image generation runs in `netlify/functions/worker-background.mjs` so it is not cut off by the 60-second request limit.
+
+1. Import the GitHub repository in Netlify. `netlify.toml` provides the build settings.
+2. Under **Project configuration → Environment variables**, add `APP_PASSWORD` (the password for the site) and `OPENAI_API_KEY`.
+3. Deploy, open the site, sign in with the password, and upload a model reference photo.
+
+The shared code lives in `server/`: `wardrobe-api.mjs` (routes and image processing), `stores.mjs` (local folder and Netlify Blobs storage), and `auth.mjs` (password session cookie).
 
 ## License
 
