@@ -265,3 +265,29 @@
 .wardrobe-filters__group legend { margin-bottom: 8px; padding: 0; font-size: 13px; font-weight: 600; }
 .wardrobe-filters__chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .wardrobe-filters__done { justify-self: start; }
+
+/* Header: short labels by default hidden; on phones everything fits one row */
+.label-short { display: none; }
+@media (max-width: 520px) {
+  .gallery-meta-row { flex-wrap: nowrap; gap: 8px; }
+  .header-actions { flex-wrap: nowrap; gap: 6px; margin-inline-start: auto; }
+  .user-account-text,
+  .user-account-caret,
+  .model-ref-text,
+  .label-long { display: none !important; }
+  .label-short { display: inline; }
+  .user-account-header-btn,
+  .model-ref-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+  .user-account-header-btn { position: relative; }
+  .user-account-header-btn .user-sync-indicator { position: absolute; bottom: 2px; inset-inline-end: 2px; }
+  .model-ref-btn .model-ref-avatar { width: 34px; height: 34px; }
+  .select-toggle { height: 40px; padding: 0 12px; }
+  .piece-count { white-space: nowrap; }
+}

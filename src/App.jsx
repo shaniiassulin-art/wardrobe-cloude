@@ -2285,15 +2285,16 @@ export function App() {
                 className="user-account-header-btn"
                 onClick={() => setUserModalOpen(true)}
                 title="הארון שלי: שם, תמונת מודל, טלפון וארונות נוספים"
+                aria-label={`הארון שלי: ${currentUser?.name || "שני אסולין"}`}
               >
                 <span className="user-account-avatar">
                   {currentUser?.name ? currentUser.name.slice(0, 1) : "ש"}
                 </span>
-                <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", lineHeight: "1.15", textAlign: "right" }}>
+                <span className="user-account-text" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", lineHeight: "1.15", textAlign: "right" }}>
                   <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--ink)" }}>{currentUser?.name || "שני אסולין"}</span>
                   <span style={{ fontSize: "10px", color: "var(--muted)" }}>הארון שלי</span>
                 </span>
-                <CaretDown size={11} weight="bold" style={{ opacity: 0.6, marginInlineStart: "2px" }} />
+                <CaretDown className="user-account-caret" size={11} weight="bold" style={{ opacity: 0.6, marginInlineStart: "2px" }} />
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
               </button>
 
@@ -2305,7 +2306,8 @@ export function App() {
                   aria-pressed={selectMode}
                 >
                   <CheckSquare size={16} aria-hidden="true" />
-                  <span>{selectMode ? "סיום בחירה" : "בחירת פריטים"}</span>
+                  <span className="label-long">{selectMode ? "סיום בחירה" : "בחירת פריטים"}</span>
+                  <span className="label-short">{selectMode ? "סיום" : "בחירה"}</span>
                 </button>
               )}
 
@@ -2355,6 +2357,7 @@ export function App() {
                 disabled={uploadingModelRef}
                 onClick={() => modelFileInputRef.current?.click()}
                 title={hasModelRef ? "לחצי להחלפת תמונת מודל" : "העלאת תמונת מודל"}
+                aria-label={hasModelRef ? "החלפת תמונת מודל" : "העלאת תמונת מודל"}
               >
                 {uploadingModelRef ? (
                   <ArrowClockwise size={16} className="spin" />
@@ -2363,7 +2366,7 @@ export function App() {
                 ) : (
                   <User size={16} weight="regular" />
                 )}
-                <span>{uploadingModelRef ? "מעלה תמונה..." : hasModelRef ? "תמונת מודל ✓" : "העלאת תמונת מודל"}</span>
+                <span className="model-ref-text">{uploadingModelRef ? "מעלה תמונה..." : hasModelRef ? "תמונת מודל ✓" : "העלאת תמונת מודל"}</span>
               </button>
             </div>
           </div>
