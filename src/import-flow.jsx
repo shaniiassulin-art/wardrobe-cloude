@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowCounterClockwise, Check, Plus, SpinnerGap, Trash, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
 import "./import-flow.css";
 import { isImageFile, toBrowserImage } from "./image-files.js";
+import { ImageLightbox } from "./ImageLightbox.jsx";
 
 const API = "/api/import/jobs";
 const CONFIG_API = "/api/import/config";
@@ -256,7 +257,7 @@ function defaultDraft(job) {
   };
 }
 
-function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt, busy, onAction }) {
+function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt, busy, onAction, onZoom }) {
   const asset = job.stages[stage]?.assetUrl;
   const isCrop = stage === "crop";
   const isGarment = stage === "garment";
@@ -264,7 +265,9 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
   const secondaryValid = !draft.secondaryColor || HEX_COLOR.test(draft.secondaryColor);
   return (
     <div className="import-editor">
-      <img className="import-editor__preview" src={asset} alt={isCrop ? "גזיר פריט" : isGarment ? "בגד מחולץ" : "תמונת מודל"} />
+      <button type="button" className="import-editor__zoom" onClick={() => onZoom?.(asset)} aria-label="הגדלת התמונה">
+        <img className="import-editor__preview" src={asset} alt={isCrop ? "גזיר פריט" : isGarment ? "בגד מחולץ" : "תמונת מודל"} />
+      </button>
       <div className="import-fields">
         <p className="import-editor__stage">{isCrop ? "פריט שזוהה" : isGarment ? "תמונת בגד" : "הדמיה על מודל"}</p>
         {isCrop ? <p className="import-card__detail">ודאו שהגזיר מכיל את הפריט המלא. אישור יתחיל חילוץ רקע נקי.</p> : isGarment ? (
@@ -337,6 +340,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   const [mode, setMode] = useState(readStoredMode);
   const [removalStatus, setRemovalStatus] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
+  const [zoomSrc, setZoomSrc] = useState(null);
   const modes = availableModes(setup);
   const canChooseMode = modes.length > 1;
   const importMode = modes.some((option) => option.id === mode) ? mode : (modes[0]?.id || "free");
@@ -631,7 +635,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                 </div>
                 {activeStatus?.tone === "processing" && <div className="import-progress__track"><div className="import-progress__bar" style={{ "--import-progress": `${progress}%` }} /></div>}
               </div>
-              {reviewJob && reviewStage ? <ReviewEditor job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} regenPrompt={regenerationPrompts[`${reviewJob.id}:${reviewStage}`] || ""} setRegenPrompt={(prompt) => setRegenerationPrompts((current) => ({ ...current, [`${reviewJob.id}:${reviewStage}`]: prompt }))} busy={busyId === reviewJob.id} onAction={(action, prompt, quality) => perform(reviewJob, reviewStage, action, prompt, quality)} /> : reviewJob && hasCleanupFailure(reviewJob) ? <CleanupEditor job={reviewJob} tolerance={cleanupTolerances[reviewJob.id] ?? reviewJob.stages.garment.cleanupTolerance ?? 46} setTolerance={(tolerance) => setCleanupTolerances((current) => ({ ...current, [reviewJob.id]: tolerance }))} busy={busyId === reviewJob.id} onPreview={(tolerance) => performCleanup(reviewJob, "preview", tolerance)} onAccept={() => performCleanup(reviewJob, "accept")} /> : null}
+              {reviewJob && reviewStage ? <ReviewEditor onZoom={setZoomSrc} job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} regenPrompt={regenerationPrompts[`${reviewJob.id}:${reviewStage}`] || ""} setRegenPrompt={(prompt) => setRegenerationPrompts((current) => ({ ...current, [`${reviewJob.id}:${reviewStage}`]: prompt }))} busy={busyId === reviewJob.id} onAction={(action, prompt, quality) => perform(reviewJob, reviewStage, action, prompt, quality)} /> : reviewJob && hasCleanupFailure(reviewJob) ? <CleanupEditor job={reviewJob} tolerance={cleanupTolerances[reviewJob.id] ?? reviewJob.stages.garment.cleanupTolerance ?? 46} setTolerance={(tolerance) => setCleanupTolerances((current) => ({ ...current, [reviewJob.id]: tolerance }))} busy={busyId === reviewJob.id} onPreview={(tolerance) => performCleanup(reviewJob, "preview", tolerance)} onAccept={() => performCleanup(reviewJob, "accept")} /> : null}
               <div className="import-card-list">
                 {jobs.map((job) => {
                   const status = deriveStatus(job);
@@ -639,7 +643,9 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                   const failedStage = job.stages?.garment?.status === "failed" ? "garment" : job.stages?.modeled?.status === "failed" ? "modeled" : null;
                   return (
                     <article className={`import-card is-${status.tone}${reviewJob?.id === job.id ? " is-selected" : ""}`} key={job.id}>
-                      <img className="import-card__image" src={job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl} alt="" />
+                      <button type="button" className="import-card__zoom" onClick={() => setZoomSrc(job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl)} aria-label={`הגדלת התמונה של ${itemName}`}>
+                        <img className="import-card__image" src={job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl} alt="" />
+                      </button>
                       <div className="import-card__body">
                         <h3 className="import-card__title">{itemName}</h3>
                         <p className="import-card__detail import-card__detail--status" data-tone={status.tone}>{status.tone === "error" ? status.detail : status.text}</p>
@@ -661,6 +667,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           {error && <p className="import-status is-error" role="alert">{error}</p>}
         </section>
       </div>
+      {zoomSrc && <ImageLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />}
     </>
   );
 }

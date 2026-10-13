@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { toBrowserImage } from "./image-files.js";
+import { ImageLightbox } from "./ImageLightbox.jsx";
+import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
 
 const STORAGE_KEY = "open-wardrobe-edits-v1";
 const DELETED_STORAGE_KEY = "open-wardrobe-deleted-v1";
-const LUGGAGE_STORAGE_KEY = "open-wardrobe-luggage-v1";
 const ACTIVE_WARDROBE_KEY = "active_wardrobe_id";
 
 const TYPES = [
   { id: "all", label: "הכל" },
   { id: "looks", label: "לוקים", singular: "לוק" },
-  { id: "luggage", label: "אריזת מזוודה", singular: "פריט מזוודה" },
+  { id: "luggage", label: "מזוודות", singular: "פריט מזוודה" },
   { id: "upperbody", label: "חולצות", singular: "חולצה" },
   { id: "lowerbody", label: "מכנסיים", singular: "מכנסיים" },
   { id: "dress", label: "שמלות", singular: "שמלה" },
@@ -177,25 +178,39 @@ function sampleImageColor(image, canvas, event) {
   return null;
 }
 
-function GalleryItem({ item, selected, onOpen }) {
+// Wardrobe card. Hovering (or the small switch on touch screens) shows the photo
+// of the garment on the user when one exists. In select mode a tap toggles it.
+function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSelect }) {
+  const [showModeled, setShowModeled] = useState(false);
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
+  const hasModeled = Boolean(item.modeledImage);
 
   return (
-    <button
-      className={`gallery-item${selected ? " selected" : ""}`}
-      type="button"
-      onClick={() => onOpen(item.id)}
-      aria-label={`צפייה ב-${item.name || type}`}
-      aria-pressed={selected}
-      data-testid={`wardrobe-item-${item.id}`}
-    >
-      <OptimizedImage
-        src={item.thumbnail || item.image}
-        alt=""
-        sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 180px"
-        breakpoints={[120, 180, 240, 320, 480]}
-      />
-    </button>
+    <div className={`gallery-item${selected ? " selected" : ""}${checked ? " is-checked" : ""}${hasModeled ? " has-modeled" : ""}${showModeled ? " show-modeled" : ""}`}>
+      <button
+        className="gallery-item__main"
+        type="button"
+        onClick={() => (selectMode ? onToggleSelect(item.id) : onOpen(item.id))}
+        aria-label={selectMode ? `בחירת ${item.name || type}` : `צפייה ב-${item.name || type}`}
+        aria-pressed={selectMode ? checked : undefined}
+        data-testid={`wardrobe-item-${item.id}`}
+      >
+        <OptimizedImage
+          src={item.thumbnail || item.image}
+          alt=""
+          sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px"
+          breakpoints={[160, 240, 320, 480, 640]}
+        />
+        {hasModeled && <img className="gallery-item__modeled" src={item.modeledImage} alt="" loading="lazy" />}
+        {selectMode && <span className="gallery-item__check" aria-hidden="true">{checked && <Check size={16} weight="bold" />}</span>}
+      </button>
+      {hasModeled && !selectMode && (
+        <button type="button" className="gallery-item__swap" onClick={() => setShowModeled((value) => !value)} aria-pressed={showModeled}>
+          {showModeled ? "הבגד" : "עליי"}
+        </button>
+      )}
+      {item.name && <p className="gallery-item__name">{item.name}</p>}
+    </div>
   );
 }
 
@@ -357,7 +372,8 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
   );
 }
 
-function ItemViewer({ item, isPacked, onToggleLuggage, onClose, onSave, onDelete, onModeledGenerated }) {
+function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, onSave, onDelete, onModeledGenerated }) {
+  const [zoomSrc, setZoomSrc] = useState(null);
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
   const samplingCanvasRef = useRef(null);
@@ -479,7 +495,8 @@ function ItemViewer({ item, isPacked, onToggleLuggage, onClose, onSave, onDelete
   };
 
   const handleImageClick = (event) => {
-    if (!sampling || !samplingCanvasRef.current) return;
+    if (!sampling) { setZoomSrc(item.image); return; }
+    if (!samplingCanvasRef.current) return;
     const color = sampleImageColor(event.currentTarget, samplingCanvasRef.current, event);
     if (!color) {
       setSampleStatus("האזור שקוף – נסו לדגום ישירות מהבגד.");
@@ -513,48 +530,52 @@ function ItemViewer({ item, isPacked, onToggleLuggage, onClose, onSave, onDelete
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
-    <aside className={`viewer editing${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="פריט מלתחה נבחר">
-      <div className="viewer-header">
-        <div className="viewer-heading">
-          <h2>{draft.name || TYPE_MAP[draft.part]?.singular}</h2>
+    <aside className={`viewer item-sheet${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="פריט מלתחה נבחר">
+      <header className="item-sheet__header">
+        <div>
+          <p className="item-sheet__eyebrow">{TYPE_MAP[draft.part]?.singular || "פריט"}</p>
+          <h2>{draft.name || type}</h2>
         </div>
         <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="סגור" ref={closeButtonRef}>
           <X size={20} weight="light" aria-hidden="true" />
         </button>
+      </header>
+
+      <div className="item-sheet__media">
+        {hasModeledImage && (
+          <div className="item-sheet__switch" role="group" aria-label="איזו תמונה להציג">
+            <button type="button" className={activePhotoTab === "flat" ? "is-active" : ""} aria-pressed={activePhotoTab === "flat"} onClick={() => setActivePhotoTab("flat")}>הבגד</button>
+            <button type="button" className={activePhotoTab === "modeled" ? "is-active" : ""} aria-pressed={activePhotoTab === "modeled"} onClick={() => setActivePhotoTab("modeled")}>עליי</button>
+          </div>
+        )}
+        {hasModeledImage && activePhotoTab === "modeled" ? (
+          <button type="button" className="item-sheet__modeled" onClick={() => setZoomSrc(item.modeledImage)} aria-label="הגדלת התמונה">
+            <img src={item.modeledImage} alt={`${draft.name || type} עליי`} />
+          </button>
+        ) : (
+          garmentArtwork
+        )}
+        {!sampling && <p className="item-sheet__hint">לחיצה על התמונה מגדילה אותה</p>}
       </div>
 
-      {hasModeledImage && (
-        <div className="viewer-photo-tabs">
-          <button
-            type="button"
-            className={`viewer-photo-tab${activePhotoTab === "flat" ? " active" : ""}`}
-            onClick={() => setActivePhotoTab("flat")}
-          >
-            בגד מבודד
-          </button>
-          <button
-            type="button"
-            className={`viewer-photo-tab${activePhotoTab === "modeled" ? " active" : ""}`}
-            onClick={() => setActivePhotoTab("modeled")}
-          >
-            על המודל
-          </button>
-        </div>
-      )}
+      <div className="item-sheet__actions">
+        <button type="button" className={suitcaseCount ? "is-on" : ""} onClick={() => onPack?.(item.id)}>
+          <Suitcase size={18} weight={suitcaseCount ? "fill" : "regular"} aria-hidden="true" />
+          <span>{suitcaseCount ? `במזוודה (${suitcaseCount})` : "הוספה למזוודה"}</span>
+        </button>
+        <button type="button" onClick={() => onCreateLook?.(item.id)}>
+          <MagicWand size={18} aria-hidden="true" />
+          <span>לוק עם הפריט</span>
+        </button>
+        <button type="button" onClick={handleGenerateModeled} disabled={generatingModeled}>
+          {generatingModeled ? <ArrowClockwise size={18} className="spin" aria-hidden="true" /> : <User size={18} aria-hidden="true" />}
+          <span>{generatingModeled ? "יוצר..." : hasModeledImage ? "יצירה מחדש עליי" : "יצירה עליי"}</span>
+        </button>
+      </div>
+      {modeledError && <p className="item-sheet__error" role="alert">{modeledError}</p>}
 
-      {hasModeledImage && activePhotoTab === "modeled" ? (
-        <div className="viewer-modeled-frame">
-          <img
-            className="viewer-modeled-full-photo"
-            src={item.modeledImage}
-            alt={`${draft.name || type} על מודל`}
-          />
-        </div>
-      ) : (
-        garmentArtwork
-      )}
-
-      <div className="viewer-details editing">
+      <section className="item-sheet__section" aria-labelledby="item-details-title">
+        <h3 id="item-details-title">פרטי הפריט</h3>
         <ItemEditor
           draft={draft}
           setDraft={setDraft}
@@ -563,52 +584,23 @@ function ItemViewer({ item, isPacked, onToggleLuggage, onClose, onSave, onDelete
           setSampling={setSampling}
           sampleStatus={sampleStatus}
         />
+      </section>
 
-        <div style={{ marginBottom: "10px" }}>
-          <button
-            type="button"
-            className={`luggage-pack-toggle-btn${isPacked ? " is-packed" : ""}`}
-            onClick={() => onToggleLuggage?.(item.id)}
-            style={{ width: "100%", justifyContent: "center", padding: "8px 12px" }}
-          >
-            <Suitcase size={16} weight={isPacked ? "fill" : "regular"} />
-            <span>{isPacked ? "ארוז במזוודה ✓ (לחצי להסרה)" : "ארוז פריט זה במזוודה"}</span>
-          </button>
-        </div>
+      {closeBlocked && <p className="unsaved-notice" role="status">יש לשמור או לבטל שינויים לפני סגירה.</p>}
 
-        <div className="viewer-avatar-action" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <button
-            type="button"
-            className="generate-avatar-btn"
-            disabled={generatingModeled}
-            onClick={handleGenerateModeled}
-          >
-            <span>
-              {generatingModeled
-                ? "יוצר על המודל..."
-                : hasModeledImage
-                ? "יצירה מחדש על המודל"
-                : "יצירה על המודל"}
-            </span>
-          </button>
-          {modeledError && <p className="avatar-error" style={{ color: "var(--accent)", fontSize: "12px", margin: "4px 0 0" }}>{modeledError}</p>}
-        </div>
-
-        {closeBlocked && <p className="unsaved-notice" role="status">יש לשמור או לבטל שינויים לפני סגירה.</p>}
-
-        <div className="viewer-actions">
-          <button className="delete-button" type="button" onClick={() => onDelete(item.id)}>
-            <Trash size={15} weight="regular" aria-hidden="true" /> מחיקה
-          </button>
-          <span className="action-spacer" />
-          <button className="secondary-button" type="button" onClick={cancelEditing}>ביטול</button>
-          <button className="primary-button" type="button" onClick={saveEditing}>
-            <Check size={15} weight="bold" aria-hidden="true" /> שמירה
-          </button>
-        </div>
-      </div>
+      <footer className="item-sheet__footer">
+        <button className="delete-button" type="button" onClick={() => onDelete(item.id)}>
+          <Trash size={15} weight="regular" aria-hidden="true" /> מחיקה
+        </button>
+        <span className="action-spacer" />
+        <button className="secondary-button" type="button" onClick={cancelEditing}>ביטול</button>
+        <button className="primary-button" type="button" onClick={saveEditing} disabled={!isDirty}>
+          <Check size={15} weight="bold" aria-hidden="true" /> שמירה
+        </button>
+      </footer>
     </aside>
     </div>
+    {zoomSrc && <ImageLightbox src={zoomSrc} alt={draft.name || type} onClose={() => setZoomSrc(null)} />}
     </div>
   );
 }
@@ -783,7 +775,7 @@ function UserAccountModal({
             </button>
           </form>
           <p className="account-stats">
-            {stats.itemCount} פריטים · {stats.looksCount} לוקים · {stats.packedCount} במזוודה
+            {stats.itemCount} פריטים · {stats.looksCount} לוקים · {stats.packedCount} מזוודות
           </p>
         </section>
 
@@ -950,203 +942,9 @@ function SuitcaseFlatlayModal({ data, onClose, onSaveAsOutfit }) {
   );
 }
 
-function LuggageView({ items, packedIds, onTogglePack, onClearLuggage, onGenerateFlatlay, onOpenItem }) {
-  const [tripName, setTripName] = useState("חופשה וסוף שבוע");
-  const [isEditingTrip, setIsEditingTrip] = useState(false);
-
-  const packedItems = useMemo(() => {
-    return items.filter((i) => packedIds.includes(i.id));
-  }, [items, packedIds]);
-
-  const availableItems = useMemo(() => {
-    return items.filter((i) => !packedIds.includes(i.id));
-  }, [items, packedIds]);
-
-  const breakdown = useMemo(() => {
-    const counts = { upperbody: 0, lowerbody: 0, dress: 0, wholebody_up: 0, shoes: 0, accessories_up: 0 };
-    for (const item of packedItems) {
-      if (counts[item.part] !== undefined) counts[item.part]++;
-      else counts.accessories_up++;
-    }
-    return counts;
-  }, [packedItems]);
-
-  return (
-    <div className="luggage-view">
-      <div className="luggage-hero-card">
-        <div className="luggage-hero-top">
-          <div className="luggage-hero-title">
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Suitcase size={22} weight="fill" color="var(--accent)" />
-              {isEditingTrip ? (
-                <input
-                  type="text"
-                  value={tripName}
-                  onChange={(e) => setTripName(e.target.value)}
-                  onBlur={() => setIsEditingTrip(false)}
-                  onKeyDown={(e) => e.key === "Enter" && setIsEditingTrip(false)}
-                  autoFocus
-                  style={{ fontSize: "18px", fontWeight: "600", padding: "2px 8px", border: "1px solid var(--accent)", borderRadius: "3px" }}
-                />
-              ) : (
-                <h2 onClick={() => setIsEditingTrip(true)} title="לחצי לעריכת שם הנסיעה" style={{ cursor: "pointer" }}>
-                  {tripName} ✎
-                </h2>
-              )}
-            </div>
-            <p>תכנון ואריזת מלתחה לנסיעה – כל הפריטים ארוזים ומסודרים לפריסה מושלמת</p>
-          </div>
-
-          <div className="luggage-hero-actions">
-            {packedItems.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => onGenerateFlatlay(packedItems)}
-                  style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-                >
-                  <MagicWand size={15} />
-                  <span>יצירת פריסת מזוודה (Flatlay)</span>
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={onClearLuggage}
-                  style={{ color: "var(--accent)" }}
-                >
-                  רוקן מזוודה
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="luggage-stats-row">
-          <div className="luggage-stat-pill">
-            <span>סה״כ במזוודה:</span>
-            <strong>{packedItems.length} פריטים</strong>
-          </div>
-          {breakdown.upperbody > 0 && (
-            <div className="luggage-stat-pill">
-              <span>חולצות:</span>
-              <strong>{breakdown.upperbody}</strong>
-            </div>
-          )}
-          {breakdown.lowerbody > 0 && (
-            <div className="luggage-stat-pill">
-              <span>מכנסיים:</span>
-              <strong>{breakdown.lowerbody}</strong>
-            </div>
-          )}
-          {breakdown.dress > 0 && (
-            <div className="luggage-stat-pill">
-              <span>שמלות:</span>
-              <strong>{breakdown.dress}</strong>
-            </div>
-          )}
-          {breakdown.wholebody_up > 0 && (
-            <div className="luggage-stat-pill">
-              <span>עליוניות:</span>
-              <strong>{breakdown.wholebody_up}</strong>
-            </div>
-          )}
-          {breakdown.shoes > 0 && (
-            <div className="luggage-stat-pill">
-              <span>נעליים:</span>
-              <strong>{breakdown.shoes}</strong>
-            </div>
-          )}
-          {breakdown.accessories_up > 0 && (
-            <div className="luggage-stat-pill">
-              <span>אקססוריז:</span>
-              <strong>{breakdown.accessories_up}</strong>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* PACKED ITEMS SECTION */}
-      <section style={{ marginBottom: "40px" }}>
-        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>פריטים בתוך המזוודה</span>
-          <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: "normal" }}>({packedItems.length})</span>
-        </h3>
-
-        {packedItems.length > 0 ? (
-          <div className="luggage-packed-grid">
-            {packedItems.map((item) => (
-              <div key={item.id} className="luggage-item-card">
-                <div className="luggage-item-card__img-wrap" onClick={() => onOpenItem?.(item.id)} style={{ cursor: "pointer" }}>
-                  <img src={item.thumbnail || item.image} alt={item.name} />
-                </div>
-                <div className="luggage-item-card__info">
-                  <div>
-                    <h4 className="luggage-item-card__title" onClick={() => onOpenItem?.(item.id)} style={{ cursor: "pointer" }}>
-                      {item.name}
-                    </h4>
-                    <span className="luggage-item-card__part">{TYPE_MAP[item.part]?.singular || item.part}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="luggage-unpack-btn"
-                    onClick={() => onTogglePack(item.id)}
-                  >
-                    <Trash size={13} />
-                    <span>הסר מהמזוודה</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-wardrobe-card" style={{ padding: "28px", marginBottom: "32px" }}>
-            <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)" }}>
-              המזוודה עדיין ריקה. בחרו פריטים מהארון למטה כדי להוסיף אותם למזוודה.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* CLOSET ITEMS TO PACK SECTION */}
-      <section>
-        <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "16px" }}>
-          הוספת פריטים מהארון למזוודה
-        </h3>
-        <div className="luggage-packed-grid">
-          {availableItems.map((item) => (
-            <div key={item.id} className="luggage-item-card">
-              <div className="luggage-item-card__img-wrap" onClick={() => onOpenItem?.(item.id)} style={{ cursor: "pointer" }}>
-                <img src={item.thumbnail || item.image} alt={item.name} />
-              </div>
-              <div className="luggage-item-card__info">
-                <div>
-                  <h4 className="luggage-item-card__title" onClick={() => onOpenItem?.(item.id)} style={{ cursor: "pointer" }}>
-                    {item.name}
-                  </h4>
-                  <span className="luggage-item-card__part">{TYPE_MAP[item.part]?.singular || item.part}</span>
-                </div>
-                <button
-                  type="button"
-                  className="primary-button"
-                  style={{ width: "100%", justifyContent: "center", padding: "6px", fontSize: "12px" }}
-                  onClick={() => onTogglePack(item.id)}
-                >
-                  <Plus size={13} weight="bold" />
-                  <span>ארוז למזוודה</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function CustomOutfitModal({ items, initialItemId, initialMode = "flatlay", onClose, onCreated }) {
+function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay", onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
-  const [selectedIds, setSelectedIds] = useState(() => initialItemId ? [initialItemId] : []);
+  const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState("");
   const [lookName, setLookName] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState("all");
@@ -1707,7 +1505,10 @@ export function App() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState("flatlay");
   const [autoModalOpen, setAutoModalOpen] = useState(false);
-  const [builderInitialItem, setBuilderInitialItem] = useState(null);
+  const [builderInitialItems, setBuilderInitialItems] = useState([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [checkedIds, setCheckedIds] = useState([]);
+  const [packingIds, setPackingIds] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [hasModelRef, setHasModelRef] = useState(false);
@@ -1740,14 +1541,9 @@ export function App() {
   });
   const [userModalOpen, setUserModalOpen] = useState(false);
 
-  // Suitcase packing state
-  const [packedIds, setPackedIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(LUGGAGE_STORAGE_KEY) || "[]");
-    } catch {
-      return [];
-    }
-  });
+  // Suitcases (one per event or trip), saved on the server
+  const [suitcases, setSuitcases] = useState([]);
+  const [activeSuitcaseId, setActiveSuitcaseId] = useState(null);
   const [luggageFlatlayModalOpen, setLuggageFlatlayModalOpen] = useState(false);
   const [luggageFlatlayData, setLuggageFlatlayData] = useState(null);
 
@@ -1786,11 +1582,9 @@ export function App() {
         headers: { "x-wardrobe-id": activeWardrobeId },
       });
       if (r.ok) {
-        const s = await r.json();
-        if (Array.isArray(s) && s.length > 0 && Array.isArray(s[0]?.garmentIds)) {
-          setPackedIds(s[0].garmentIds);
-        } else if (Array.isArray(s) && s.length === 0) {
-          setPackedIds([]);
+        const list = await r.json();
+        if (Array.isArray(list)) {
+          setSuitcases([...list].sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || ""))));
         }
       }
     } catch {}
@@ -2097,35 +1891,59 @@ export function App() {
     setSelectedId(null);
   };
 
-  const toggleLuggagePack = (id) => {
-    setPackedIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      localStorage.setItem(LUGGAGE_STORAGE_KEY, JSON.stringify(next));
-      fetch(`/api/import/suitcases?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
-        body: JSON.stringify({ id: "main-suitcase", title: "המזוודה שלי", garmentIds: next }),
-      }).catch(() => {});
-      fetch(`/api/import/user/sync?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
-        body: JSON.stringify({ packedIds: next }),
-      }).catch(() => {});
-      return next;
-    });
-  };
-
-  const clearLuggage = () => {
-    setPackedIds([]);
-    localStorage.setItem(LUGGAGE_STORAGE_KEY, "[]");
+  const saveSuitcase = (suitcase) => {
+    const saved = { ...suitcase, garmentIds: [...new Set(suitcase.garmentIds || [])] };
+    setSuitcases((current) => current.some((s) => s.id === saved.id) ? current.map((s) => (s.id === saved.id ? saved : s)) : [...current, saved]);
     fetch(`/api/import/suitcases?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
-      body: JSON.stringify({ id: "main-suitcase", title: "המזוודה שלי", garmentIds: [] }),
+      body: JSON.stringify(saved),
+    }).catch(() => setError("לא ניתן לשמור את המזוודה כרגע."));
+  };
+
+  const createSuitcase = (title, garmentIds = []) => {
+    const suitcase = { id: newSuitcaseId(), title, garmentIds, createdAt: new Date().toISOString() };
+    saveSuitcase(suitcase);
+    setActiveSuitcaseId(suitcase.id);
+    return suitcase;
+  };
+
+  const addToSuitcase = (id, itemIds) => {
+    const suitcase = suitcases.find((s) => s.id === id);
+    if (suitcase) saveSuitcase({ ...suitcase, garmentIds: [...(suitcase.garmentIds || []), ...itemIds] });
+  };
+
+  const removeFromSuitcase = (id, itemIds) => {
+    const suitcase = suitcases.find((s) => s.id === id);
+    if (suitcase) saveSuitcase({ ...suitcase, garmentIds: (suitcase.garmentIds || []).filter((x) => !itemIds.includes(x)) });
+  };
+
+  const toggleInSuitcase = (id, itemId) => {
+    const suitcase = suitcases.find((s) => s.id === id);
+    if (!suitcase) return;
+    if (suitcase.garmentIds?.includes(itemId)) removeFromSuitcase(id, [itemId]);
+    else addToSuitcase(id, [itemId]);
+  };
+
+  const deleteSuitcase = (id) => {
+    setSuitcases((current) => current.filter((s) => s.id !== id));
+    if (activeSuitcaseId === id) setActiveSuitcaseId(null);
+    fetch(`/api/import/suitcases/${encodeURIComponent(id)}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "DELETE",
+      headers: { "x-wardrobe-id": activeWardrobeId },
     }).catch(() => {});
   };
 
-  const handleLuggageFlatlay = async (packedPieces) => {
+  const openLookBuilder = (itemIds, mode = "flatlay") => {
+    setBuilderInitialItems(itemIds);
+    setBuilderMode(mode);
+    setBuilderOpen(true);
+  };
+
+  const toggleChecked = (id) => setCheckedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+  const exitSelectMode = () => { setSelectMode(false); setCheckedIds([]); };
+
+  const handleLuggageFlatlay = async (packedPieces, suitcase) => {
     if (!packedPieces.length) return;
     try {
       const res = await fetch(`/api/import/outfits/preview-flatlay?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
@@ -2136,7 +1954,7 @@ export function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "שגיאה ביצירת פריסה");
       setLuggageFlatlayData({
-        title: "פריסת מלתחה למזוודה",
+        title: suitcase?.title ? `פריסת המזוודה: ${suitcase.title}` : "פריסת מלתחה למזוודה",
         image: data.image,
         items: packedPieces,
       });
@@ -2148,7 +1966,7 @@ export function App() {
 
   const handleSaveLuggageOutfit = async (flatlayData) => {
     const payload = {
-      name: "לוק ארוז למזוודה",
+      name: flatlayData.title?.replace("פריסת המזוודה: ", "") || "לוק ארוז למזוודה",
       garmentIds: flatlayData.items.map((i) => i.id),
       mode: "flatlay",
       image: flatlayData.image,
@@ -2242,7 +2060,7 @@ export function App() {
               {activeType === "looks"
                 ? `${outfits.length} ${outfits.length === 1 ? "לוק" : "לוקים"}`
                 : activeType === "luggage"
-                ? `${packedIds.length} ${packedIds.length === 1 ? "פריט ארוז" : "פריטים ארוזים"}`
+                ? `${suitcases.length} ${suitcases.length === 1 ? "מזוודה" : "מזוודות"}`
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
             </p>
             <div className="header-actions">
@@ -2263,16 +2081,24 @@ export function App() {
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
               </button>
 
+              {activeType !== "looks" && activeType !== "luggage" && items.length > 0 && (
+                <button
+                  type="button"
+                  className={`secondary-header-btn select-toggle${selectMode ? " is-active" : ""}`}
+                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                  aria-pressed={selectMode}
+                >
+                  <CheckSquare size={16} aria-hidden="true" />
+                  <span>{selectMode ? "סיום בחירה" : "בחירת פריטים"}</span>
+                </button>
+              )}
+
               {activeType === "looks" && (
                 <>
                   <button
                     type="button"
                     className="create-look-btn"
-                    onClick={() => {
-                      setBuilderInitialItem(null);
-                      setBuilderMode("flatlay");
-                      setBuilderOpen(true);
-                    }}
+                    onClick={() => openLookBuilder([], "flatlay")}
                   >
                     <span>לוק ללא מודל (פריסה שטוחה)</span>
                   </button>
@@ -2280,11 +2106,7 @@ export function App() {
                   <button
                     type="button"
                     className="secondary-header-btn"
-                    onClick={() => {
-                      setBuilderInitialItem(null);
-                      setBuilderMode("modeled");
-                      setBuilderOpen(true);
-                    }}
+                    onClick={() => openLookBuilder([], "modeled")}
                   >
                     <span>לוק על מודל</span>
                   </button>
@@ -2391,11 +2213,16 @@ export function App() {
         {activeType === "luggage" && (
           <LuggageView
             items={items}
-            packedIds={packedIds}
-            onTogglePack={toggleLuggagePack}
-            onClearLuggage={clearLuggage}
+            suitcases={suitcases}
+            activeId={activeSuitcaseId}
+            onSelect={setActiveSuitcaseId}
+            onCreate={createSuitcase}
+            onRename={(id, title) => { const suitcase = suitcases.find((s) => s.id === id); if (suitcase) saveSuitcase({ ...suitcase, title }); }}
+            onDelete={deleteSuitcase}
+            onToggleItem={toggleInSuitcase}
             onGenerateFlatlay={handleLuggageFlatlay}
             onOpenItem={setSelectedId}
+            typeLabel={(part) => TYPE_MAP[part]?.singular || part}
           />
         )}
 
@@ -2418,18 +2245,51 @@ export function App() {
                 key={item.id}
                 item={item}
                 selected={selectedId === item.id}
+                selectMode={selectMode}
+                checked={checkedIds.includes(item.id)}
                 onOpen={setSelectedId}
+                onToggleSelect={toggleChecked}
               />
             ))}
           </section>
         )}
       </main>
 
+      {selectMode && (
+        <div className="selection-bar" role="region" aria-label="פעולות על הפריטים שנבחרו">
+          <span className="selection-bar__count">{checkedIds.length ? `נבחרו ${checkedIds.length}` : "בחרי פריטים מהארון"}</span>
+          <div className="selection-bar__actions">
+            <button type="button" className="primary-button" disabled={!checkedIds.length} onClick={() => { openLookBuilder(checkedIds, "flatlay"); exitSelectMode(); }}>
+              <MagicWand size={15} aria-hidden="true" /> לוק בפריסה
+            </button>
+            <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={() => { openLookBuilder(checkedIds, "modeled"); exitSelectMode(); }}>
+              <User size={15} aria-hidden="true" /> לוק עליי (AI)
+            </button>
+            <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={() => setPackingIds(checkedIds)}>
+              <Suitcase size={15} aria-hidden="true" /> למזוודה
+            </button>
+            <button type="button" className="import-icon-button" onClick={exitSelectMode} aria-label="ביטול הבחירה"><X size={18} /></button>
+          </div>
+        </div>
+      )}
+
+      {packingIds && (
+        <SuitcasePicker
+          suitcases={suitcases}
+          itemIds={packingIds}
+          onAdd={(id, ids) => addToSuitcase(id, ids)}
+          onRemove={(id, ids) => removeFromSuitcase(id, ids)}
+          onCreate={(title, ids) => createSuitcase(title, ids)}
+          onClose={() => { setPackingIds(null); if (selectMode) exitSelectMode(); }}
+        />
+      )}
+
       {selectedItem && (
         <ItemViewer
           item={selectedItem}
-          isPacked={packedIds.includes(selectedItem.id)}
-          onToggleLuggage={toggleLuggagePack}
+          suitcaseCount={suitcases.filter((s) => s.garmentIds?.includes(selectedItem.id)).length}
+          onPack={(id) => setPackingIds([id])}
+          onCreateLook={(id) => { setSelectedId(null); openLookBuilder([id], "flatlay"); }}
           onClose={() => setSelectedId(null)}
           onSave={saveItem}
           onDelete={deleteItem}
@@ -2442,7 +2302,7 @@ export function App() {
       {userModalOpen && (
         <UserAccountModal
           user={currentUser}
-          stats={{ itemCount: items.length, looksCount: outfits.length, packedCount: packedIds.length }}
+          stats={{ itemCount: items.length, looksCount: outfits.length, packedCount: suitcases.length }}
           activeWardrobeId={activeWardrobeId}
           wardrobesList={wardrobesList}
           hasModelRef={hasModelRef}
@@ -2468,11 +2328,11 @@ export function App() {
       {builderOpen && (
         <CustomOutfitModal
           items={items}
-          initialItemId={builderInitialItem}
+          initialItemIds={builderInitialItems}
           initialMode={builderMode}
           onClose={() => {
             setBuilderOpen(false);
-            setBuilderInitialItem(null);
+            setBuilderInitialItems([]);
           }}
           onCreated={(newOutfit) => {
             setOutfits((current) => [newOutfit, ...current.filter((o) => o.id !== newOutfit.id)]);
@@ -2503,7 +2363,7 @@ export function App() {
         />
       )}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks"} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || selectMode || Boolean(selectedItem)} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }

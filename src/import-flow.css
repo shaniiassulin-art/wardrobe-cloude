@@ -333,3 +333,9 @@
 .import-live-status__bar.is-indeterminate { width: 35%; animation: import-live-slide 1.2s ease-in-out infinite; }
 @keyframes import-live-slide { from { transform: translateX(200%); } to { transform: translateX(-100%); } }
 @media (prefers-reduced-motion: reduce) { .import-live-status__bar.is-indeterminate { animation: none; width: 100%; opacity: 0.4; } }
+
+.import-editor__zoom,
+.import-card__zoom { display: block; border: 0; padding: 0; background: transparent; cursor: zoom-in; }
+.import-editor__zoom { width: 100%; }
+.import-editor__zoom:focus-visible,
+.import-card__zoom:focus-visible { outline: 2px solid var(--import-ink); outline-offset: 2px; }
