@@ -1738,6 +1738,21 @@ export function App() {
     return () => { stopScroll(); stopOverlays(); };
   }, []);
 
+  // Tags are shown in Hebrew: translate any English ones once per wardrobe per visit
+  const tagTranslationTried = useRef(new Set());
+  useEffect(() => {
+    if (tagTranslationTried.current.has(activeWardrobeId)) return;
+    if (!items.some((item) => (item.tags || []).some((tag) => /[a-z]/i.test(tag)))) return;
+    tagTranslationTried.current.add(activeWardrobeId);
+    fetch(`/api/import/tags/translate?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "POST",
+      headers: { "x-wardrobe-id": activeWardrobeId },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => { if (result?.itemsChanged) fetchWardrobe(); })
+      .catch(() => {});
+  }, [items, activeWardrobeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Cards rise into place when the wardrobe loads or the tab changes
   useLayoutEffect(() => {
     if (loading || !paneRef.current) return;

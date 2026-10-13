@@ -68,6 +68,22 @@ function decodeImage(input) {
   return { data, mime };
 }
 
+// Common English tags the import used to produce, with their Hebrew wording
+const TAG_TRANSLATIONS = {
+  casual: "יומיומי", everyday: "יומיומי", formal: "אלגנטי", elegant: "אלגנטי", evening: "ערב", party: "מסיבה",
+  summer: "קיץ", winter: "חורף", spring: "אביב", fall: "סתיו", autumn: "סתיו", beach: "חוף", sport: "ספורט", sporty: "ספורטיבי",
+  cotton: "כותנה", denim: "ג׳ינס", linen: "פשתן", wool: "צמר", knit: "סריג", knitted: "סריג", leather: "עור", silk: "משי",
+  satin: "סאטן", lace: "תחרה", velvet: "קטיפה", polyester: "פוליאסטר", suede: "זמש", chiffon: "שיפון",
+  striped: "פסים", stripes: "פסים", floral: "פרחוני", plaid: "משבצות", checked: "משבצות", "polka dot": "נקודות", printed: "מודפס", solid: "חלק", plain: "חלק",
+  "long sleeve": "שרוול ארוך", "long sleeves": "שרוול ארוך", "short sleeve": "שרוול קצר", "short sleeves": "שרוול קצר", sleeveless: "ללא שרוולים",
+  oversized: "אוברסייז", fitted: "צמוד", slim: "צמוד", loose: "רפוי", cropped: "קרופ", "high waist": "גזרה גבוהה", "high-waisted": "גזרה גבוהה",
+  maxi: "מקסי", midi: "מידי", mini: "מיני", "v-neck": "צווארון וי", "crew neck": "צווארון עגול", hooded: "קפוצ׳ון", hoodie: "קפוצ׳ון",
+  buttons: "כפתורים", button: "כפתורים", zipper: "רוכסן", zip: "רוכסן", pockets: "כיסים", pocket: "כיסים", belt: "חגורה", pleated: "פליסה",
+  basic: "בייסיק", classic: "קלאסי", vintage: "וינטג׳", minimalist: "מינימליסטי", comfortable: "נוח", warm: "חם", light: "קליל", lightweight: "קליל",
+  work: "עבודה", office: "משרד", "smart-casual": "סמארט קז׳ואל", "smart casual": "סמארט קז׳ואל", weekend: "סוף שבוע", "night-out": "יציאה",
+};
+const hasLatin = (text) => /[a-z]/i.test(text || "");
+
 function normalizeMetadata(value = {}) {
   const metadata = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const color = typeof metadata.color === "string" && HEX_COLOR.test(metadata.color) ? metadata.color.toLowerCase() : "#d8d0c2";
@@ -989,7 +1005,7 @@ async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
     body: JSON.stringify({
       model: validVisionModel,
       input: [{ role: "user", content: [
-        { type: "input_text", text: "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary hex color, optional genuinely distinct secondary hex color, and 1-4 useful lowercase detail tags." },
+        { type: "input_text", text: "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary hex color, optional genuinely distinct secondary hex color, and 1-4 useful short detail tags written in Hebrew (for example: כותנה, פסים, קיץ, יומיומי)." },
         { type: "input_image", image_url: `data:${mime};base64,${image.toString("base64")}` },
       ] }],
       text: { format: { type: "json_schema", name: "wardrobe_items", strict: true, schema: { type: "object", additionalProperties: false, properties: { items: { type: "array", minItems: 0, maxItems: 8, items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"] }, color: { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, secondaryColor: { anyOf: [{ type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" }, maxItems: 4 }, boundingBox: { type: "object", additionalProperties: false, properties: { x: { type: "integer", minimum: 0, maximum: 999 }, y: { type: "integer", minimum: 0, maximum: 999 }, width: { type: "integer", minimum: 1, maximum: 1000 }, height: { type: "integer", minimum: 1, maximum: 1000 } }, required: ["x", "y", "width", "height"] } }, required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"] } } }, required: ["items"] } } },
@@ -1010,7 +1026,7 @@ async function geminiAnalyze({ image, mime = "image/png" }) {
     apiKey: process.env.GEMINI_API_KEY,
     httpOptions: { headers: { "User-Agent": "aistudio-build" } },
   });
-  const prompt = "Identify every distinct wearable clothing item visible in this image. Return one record per actual item. Include integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner (0-999), followed by width and height (1-1000). Use only category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary six-digit hex color (#rrggbb), optional secondary hex color, and 1-4 detail tags.";
+  const prompt = "Identify every distinct wearable clothing item visible in this image. Return one record per actual item. Include integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner (0-999), followed by width and height (1-1000). Use only category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary six-digit hex color (#rrggbb), optional secondary hex color, and 1-4 short detail tags written in Hebrew.";
   const response = await ai.models.generateContent({
     model: "gemini-3.1-flash-lite",
     contents: [
@@ -2064,6 +2080,52 @@ Respond in strict JSON format:
     }
   }
 
+  // Rewrites English tags in a wardrobe as Hebrew. Known words come from the
+  // dictionary; anything else is translated by the text model when a key is set.
+  async function translateWardrobeTags(wardrobeId) {
+    const records = await loadImported(wardrobeId);
+    const english = [...new Set(records.flatMap((record) => (record.tags || []).filter(hasLatin).map((tag) => tag.trim().toLowerCase())))];
+    if (!english.length) return { translated: 0, remaining: 0 };
+    const map = new Map(english.filter((tag) => TAG_TRANSLATIONS[tag]).map((tag) => [tag, TAG_TRANSLATIONS[tag]]));
+    const unknown = english.filter((tag) => !map.has(tag));
+    const key = setting("OPENAI_API_KEY");
+    if (unknown.length && key) {
+      try {
+        const res = await fetch(`${apiBaseUrl()}/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${checkApiKey(key, "OpenAI")}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: setting("OPENAI_VISION_MODEL", "gpt-4o-mini"),
+            response_format: { type: "json_object" },
+            temperature: 0,
+            messages: [
+              { role: "system", content: "You translate short clothing tags from English to natural, short Hebrew as used in fashion stores. Reply with JSON only." },
+              { role: "user", content: `Translate each tag to Hebrew. Return {"translations": {"<english tag>": "<hebrew tag>"}}. Tags: ${JSON.stringify(unknown)}` },
+            ],
+          }),
+        });
+        const content = (await res.json())?.choices?.[0]?.message?.content;
+        const translations = JSON.parse(content || "{}").translations || {};
+        for (const [tag, hebrew] of Object.entries(translations)) {
+          if (typeof hebrew === "string" && hebrew.trim() && unknown.includes(tag.toLowerCase())) map.set(tag.toLowerCase(), hebrew.trim().slice(0, 40));
+        }
+      } catch (error) {
+        console.warn("Tag translation failed:", error.message);
+      }
+    }
+    if (!map.size) return { translated: 0, remaining: english.length };
+    // Re-read so edits made meanwhile are kept
+    const latest = await loadImported(wardrobeId);
+    let changed = 0;
+    for (const record of latest) {
+      const tags = (record.tags || []).map((tag) => map.get(tag.trim().toLowerCase()) || tag);
+      const unique = [...new Set(tags)];
+      if (JSON.stringify(unique) !== JSON.stringify(record.tags || [])) { record.tags = unique; changed += 1; }
+    }
+    if (changed) await saveImported(wardrobeId, latest);
+    return { translated: map.size, remaining: english.length - map.size, itemsChanged: changed };
+  }
+
   async function handle(request) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/import/")) return null;
@@ -2077,6 +2139,9 @@ Respond in strict JSON format:
         if (task.status !== "done") return json(200, { status: task.status });
         await store.delete(key);
         return json(200, { status: "done", response: task.response });
+      }
+      if (url.pathname === "/api/import/tags/translate" && request.method === "POST") {
+        return json(200, await translateWardrobeTags(resolveWardrobeId(request, url)));
       }
       if (url.pathname === "/api/import/wardrobes" && request.method === "GET") {
         return json(200, await listWardrobes());
@@ -2501,7 +2566,7 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
             part: (free && input.metadata?.part) || "upperbody",
             color: (free && input.metadata?.color) || dominantHex,
             boundingBox: { x: 0, y: 0, width: 1000, height: 1000 },
-            tags: free ? [] : ["casual"],
+            tags: free ? [] : ["יומיומי"],
           })];
         }
         const jobs = [];
