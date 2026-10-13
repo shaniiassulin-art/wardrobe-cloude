@@ -590,6 +590,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
             </div>
             <button className="import-icon-button" type="button" onClick={() => setOpen(false)} aria-label="סגור"><X size={20} /></button>
           </header>
+          {/* Always visible so the choice is never hidden below a long import list */}
+          {!setupRequired && <ImportModeToggle mode={importMode} modes={modes} sandbox={setup?.photoroomSandbox} onChange={chooseMode} />}
           {!jobs.length ? setupRequired ? (
             <div className="import-drop-target import-setup-warning">
               <WarningCircle size={30} />
@@ -606,7 +608,6 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
               <UploadSimple size={28} />
               <h2>{notice ? "נסו תמונה אחרת" : "העלאת תמונות של בגדים"}</h2>
               <p>{notice?.detail || "גררו לכאן תמונות של בגדים, או לחצו על הכפתור לבחירת קבצים."}</p>
-              <ImportModeToggle mode={importMode} modes={modes} sandbox={setup?.photoroomSandbox} onChange={chooseMode} />
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", justifyContent: "center", marginTop: "14px" }}>
                 <button className="import-button import-button--primary" onClick={() => { setNotice(null); inputRef.current?.click(); }}>
                   <Plus size={16} weight="bold" /> בחירת תמונות בגדים
@@ -644,7 +645,6 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
                   );
                 })}
               </div>
-              <ImportModeToggle mode={importMode} modes={modes} sandbox={setup?.photoroomSandbox} onChange={chooseMode} />
               <div className="import-actions">
                 <button className="import-button" onClick={() => inputRef.current?.click()}><Plus size={14} /> הוסף עוד</button>
               </div>
