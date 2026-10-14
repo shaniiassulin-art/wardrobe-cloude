@@ -1334,7 +1334,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     const projectId = setting("OPENAI_PROJECT_ID").trim();
     let total = 0;
     let page = null;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 20; i++) {
       const params = new URLSearchParams({ start_time: String(Math.floor(startTime)), bucket_width: "1d", limit: "180" });
       if (projectId) params.append("project_ids", projectId);
       if (page) params.set("page", page);
@@ -1378,6 +1378,8 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     if (summary.actual.configured) {
       try {
         summary.actual.monthUsd = await openAICosts(monthStart);
+        // Everything since 2023, when the current billing system started
+        summary.actual.allTimeUsd = await openAICosts(Date.UTC(2023, 0, 1) / 1000);
         if (balance?.setAt) summary.actual.sinceBalanceUsd = await openAICosts(Date.parse(balance.setAt) / 1000);
       } catch (error) {
         summary.actual.error = error.message;

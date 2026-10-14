@@ -1,0 +1,11 @@
+[
+  {
+    "id": "import-11111111-2222-3333-4444-555555555555",
+    "name": "Jacket",
+    "part": "wholebody_up",
+    "color": "#3a5f8a",
+    "tags": [],
+    "openImage": "/api/import/library/import-11111111-2222-3333-4444-555555555555-open.png?t=1792004454364",
+    "openQuality": "medium"
+  }
+]
