@@ -558,21 +558,35 @@ export async function fitMultipleGarmentsOnModel(modelBuffer, garmentEntries = [
 }
 
 // Free styling choices for a flat lay, done by arranging the photos (no AI):
-//   jacket: "open"   - the jacket lies underneath and the top sits on it, like an open jacket
-//           "closed" - the jacket lies on top and covers the top, only the neckline peeks out
+//   jacket: "open"   - the jacket lies open with the top showing between its two fronts.
+//                      Uses the jacket's AI "open version" when one was made, otherwise
+//                      the photo is cut down the middle and the halves are spread apart.
+//           "front"  - the whole jacket lies on top of the top, only the neckline peeks out
+//           "behind" - the whole jacket lies underneath and the top sits on it
 //   top:    "out"    - the top lies over the waistband of the bottoms
 //           "tucked" - the bottoms lie over the hem of the top, like a tucked-in top
 export const FLATLAY_STYLING = {
-  jacket: ["open", "closed"],
+  jacket: ["open", "front", "behind"],
   top: ["out", "tucked"],
 };
+const LEGACY_STYLING = { jacket: { closed: "front" } };
 
 export function normalizeFlatlayStyling(input = {}) {
   const styling = {};
   for (const [key, allowed] of Object.entries(FLATLAY_STYLING)) {
-    if (allowed.includes(input?.[key])) styling[key] = input[key];
+    const value = LEGACY_STYLING[key]?.[input?.[key]] || input?.[key];
+    if (allowed.includes(value)) styling[key] = value;
   }
   return styling;
+}
+
+// Cuts a garment photo down the middle into its left and right halves
+async function splitDownTheMiddle(buffer) {
+  const { width, height } = await sharp(buffer).metadata();
+  const half = Math.max(1, Math.floor(width / 2));
+  const left = await sharp(buffer).extract({ left: 0, top: 0, width: half, height }).png().toBuffer();
+  const right = await sharp(buffer).extract({ left: half, top: 0, width: width - half, height }).png().toBuffer();
+  return { left, right, ratio: height / width };
 }
 
 export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
@@ -600,8 +614,15 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       const ratio = (meta.height || 1) / (meta.width || 1);
       const nameLower = (entry.item?.name || "").toLowerCase();
       const part = entry.item?.part || "upperbody";
+      let openBuffer = null;
+      if (entry.openBuffer) {
+        openBuffer = await sharp(entry.openBuffer).trim().toBuffer().catch(() => entry.openBuffer);
+      }
+      const openMeta = openBuffer ? await sharp(openBuffer).metadata().catch(() => null) : null;
       processed.push({
         buffer: imgBuffer,
+        openBuffer,
+        openRatio: openMeta ? (openMeta.height || 1) / (openMeta.width || 1) : null,
         item: entry.item,
         meta,
         ratio,
@@ -728,17 +749,17 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
   };
 
   // Helper to place item with realistic drop shadow
-  async function placeItem(item, { targetW, targetH, left, top, blur = 6, opacity = 0.22 }) {
+  async function placeItem(item, { targetW, targetH, left, top, blur = 6, opacity = 0.22, buffer, fit = "contain" }) {
     const w = Math.max(40, Math.round(targetW));
     const h = Math.max(40, Math.round(targetH));
     const l = Math.round(left);
     const t = Math.round(top);
 
-    const resized = await sharp(item.buffer)
+    const resized = await sharp(buffer || item.buffer)
       .resize({
         width: w,
         height: h,
-        fit: "contain",
+        fit,
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       })
       .png()
@@ -753,7 +774,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
 
     const layers = [{ input: shadow, top: t + 4, left: l + 2 }, { input: resized, top: t, left: l }];
     composites.push(...layers);
-    layersOf.set(item, layers);
+    layersOf.set(item, [...(layersOf.get(item) || []), ...layers]);
 
     placedBoxes.push({ left: l, top: t, width: w, height: h });
   }
@@ -781,6 +802,10 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
   const allUpper = [...outerwear, ...tops, ...dresses];
   const upperTopY = currentY;
   let upperBottom = null;
+  // Where the bottoms start when they overlap the top (the hem of the inner top)
+  let tuckLine = null;
+  // True when the jacket lies underneath the top rather than over it
+  let jacketUnder = false;
   if (allUpper.length === 1) {
     const item = allUpper[0];
     const isFullDress = dresses.includes(item);
@@ -798,8 +823,37 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     if (hasOuter && jacket) {
       const outerPiece = outerwear[0];
       const innerPiece = (allUpper[0] === outerPiece) ? allUpper[1] : allUpper[0];
-      if (jacket === "open") {
-        // Jacket underneath, top centred on it and a little lower so the collar shows
+      if (jacket === "open" && outerPiece.openBuffer) {
+        // The jacket's own open photo (empty between the fronts) lies over the top
+        const outerW = 480;
+        const outerH = Math.min(620, Math.round(outerW * outerPiece.openRatio));
+        const innerW = 320;
+        const innerH = Math.min(460, Math.round(innerW * innerPiece.ratio));
+        const innerTop = currentY + 6;
+        await placeItem(innerPiece, { targetW: innerW, targetH: innerH, left: centerX - innerW / 2, top: innerTop, blur: 6, opacity: 0.2 });
+        await placeItem(outerPiece, { targetW: outerW, targetH: outerH, left: centerX - outerW / 2, top: currentY, blur: 8, opacity: 0.25, buffer: outerPiece.openBuffer });
+        tuckLine = innerTop + innerH;
+        upperBottom = Math.max(currentY + outerH, innerTop + innerH);
+        currentY = upperBottom + 15;
+      } else if (jacket === "open") {
+        // No open photo: cut the jacket in two and spread the halves over the sides of the top
+        const halves = await splitDownTheMiddle(outerPiece.buffer);
+        const jacketW = 430;
+        const halfW = Math.round(jacketW / 2);
+        const jacketH = Math.min(600, Math.round(jacketW * halves.ratio));
+        const innerW = 320;
+        const innerH = Math.min(460, Math.round(innerW * innerPiece.ratio));
+        const gap = Math.round(innerW * 0.42);
+        const innerTop = currentY + 6;
+        await placeItem(innerPiece, { targetW: innerW, targetH: innerH, left: centerX - innerW / 2, top: innerTop, blur: 6, opacity: 0.2 });
+        // Each half keeps its height and stays against its cut edge
+        await placeItem(outerPiece, { targetW: halfW, targetH: jacketH, left: centerX - gap / 2 - halfW, top: currentY, blur: 8, opacity: 0.25, buffer: halves.left, fit: "fill" });
+        await placeItem(outerPiece, { targetW: halfW, targetH: jacketH, left: centerX + gap / 2, top: currentY, blur: 8, opacity: 0.25, buffer: halves.right, fit: "fill" });
+        tuckLine = innerTop + innerH;
+        upperBottom = Math.max(currentY + jacketH, innerTop + innerH);
+        currentY = upperBottom + 15;
+      } else if (jacket === "behind") {
+        // Whole jacket underneath, top centred on it and a little lower so the collar shows
         const outerW = 440;
         const outerH = Math.min(600, Math.round(outerW * outerPiece.ratio));
         const innerW = 300;
@@ -807,10 +861,11 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
         const innerTop = currentY + Math.round(outerH * 0.12);
         await placeItem(outerPiece, { targetW: outerW, targetH: outerH, left: centerX - outerW / 2, top: currentY, blur: 8, opacity: 0.25 });
         await placeItem(innerPiece, { targetW: innerW, targetH: innerH, left: centerX - innerW / 2, top: innerTop, blur: 6, opacity: 0.2 });
+        jacketUnder = true;
         upperBottom = Math.max(currentY + outerH, innerTop + innerH);
         currentY = upperBottom + 15;
       } else {
-        // Top underneath and slightly higher, jacket on top of it
+        // Whole jacket in front: the top underneath and slightly higher, jacket on top of it
         const innerW = 330;
         const innerH = Math.min(480, Math.round(innerW * innerPiece.ratio));
         const outerW = 420;
@@ -870,7 +925,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
   // Only when there is a separate top (not a dress) and bottoms to tuck into.
   const canTuck = topStyle && bottoms.length > 0 && allUpper.length > 0 && !allUpper.every((e) => dresses.includes(e));
   if (canTuck) {
-    const sectionBottom = upperBottom ?? (currentY - 15);
+    const sectionBottom = tuckLine ?? upperBottom ?? (currentY - 15);
     const upperHeight = Math.max(1, sectionBottom - upperTopY);
     const overlap = Math.round(Math.min(140, upperHeight * (topStyle === "tucked" ? 0.2 : 0.12)));
     currentY = sectionBottom - overlap;
@@ -917,9 +972,17 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     }
   }
 
-  // Untucked: the top (and any jacket) lies over the waistband of the bottoms.
-  // Tucked: the bottoms cover the hem of the top, but a jacket still lies on top.
-  if (canTuck) bringToFront(topStyle === "out" ? allUpper : outerwear);
+  // Untucked: the top lies over the waistband of the bottoms.
+  // Tucked: the bottoms cover the hem of the top.
+  // A jacket lying over the top stays on top of everything; one lying under it stays under.
+  if (canTuck) {
+    const inner = allUpper.filter((piece) => !outerwear.includes(piece));
+    if (jacketUnder) {
+      if (topStyle === "out") bringToFront(inner);
+    } else {
+      bringToFront(topStyle === "out" ? [...inner, ...outerwear] : outerwear);
+    }
+  }
 
   // 5. Shoes
   if (shoes.length === 1) {
@@ -1183,6 +1246,7 @@ const LONG_ROUTES = [
   { method: "POST", pattern: /^\/api\/import\/outfits\/auto-generate$/ },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/modeled$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/regenerate$/i },
+  { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/open-version$/i },
 ];
 
 /**
@@ -1214,6 +1278,15 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   }
 
   const libraryKey = (name) => `imported/${name}`;
+
+  // Garment photos for a flat lay, plus the AI "open" photo of jackets that have one
+  async function withOpenVersions(entries) {
+    for (const entry of entries) {
+      if (!entry.item?.openImage) continue;
+      entry.openBuffer = await store.getBytes(libraryKey(`${entry.item.id}-open.png`)).catch(() => null);
+    }
+    return entries;
+  }
 
   // Resized WebP copies of stored images. The ?t= version is part of the key, so a
   // replaced photo (which always gets a new ?t=) gets a fresh copy.
@@ -1462,7 +1535,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     }));
 
     if (isFlatlay) {
-      bytes = await generateFlatLayOutfit(garmentEntries, styling);
+      bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling);
     } else {
       const key = setting("OPENAI_API_KEY");
       const modelData = await loadModelReference(wardrobeId);
@@ -1591,7 +1664,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
           if (buffer) garmentEntries.push({ buffer, item: g });
         }
         if (garmentEntries.length) {
-          const bytes = await generateFlatLayOutfit(garmentEntries, styling);
+          const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling);
           const filename = `${outfitId}.png`;
           await store.setBytes(outfitImageKey(filename), bytes);
           outfitImage = `/api/import/outfits/images/${filename}?t=${Date.now()}`;
@@ -2414,6 +2487,62 @@ Respond in strict JSON format:
           note: direction || null,
           createdAt: new Date(stamp).toISOString(),
         };
+        await saveImported(wId, latest);
+        return json(200, latestRecord);
+      }
+      const openVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/open-version$/i);
+      if (openVersionMatch && (request.method === "POST" || request.method === "DELETE")) {
+        // A photo of a jacket lying open, made once with AI and reused for free in every flat lay
+        const id = openVersionMatch[1];
+        const wId = resolveWardrobeId(request, url);
+        const records = await loadImported(wId);
+        const record = records.find((item) => item.id === id);
+        if (!record) return json(404, { error: "Wardrobe item not found" });
+        if (request.method === "DELETE") {
+          await store.delete(libraryKey(`${id}-open.png`)).catch(() => {});
+          record.openImage = null;
+          await saveImported(wId, records);
+          return json(200, record);
+        }
+        const input = await body(request);
+        const key = setting("OPENAI_API_KEY");
+        if (!key) return json(400, { error: "צריך מפתח של OpenAI כדי ליצור גרסה פתוחה." });
+        const garment = await store.getBytes(libraryKey(`${id}-garment.png`));
+        if (!garment) return json(404, { error: "לא נמצאה תמונה של הפריט." });
+        const source = await sharp(garment).flatten({ background: "#ffffff" }).png().toBuffer();
+        const quality = ["low", "medium"].includes(input.quality) ? input.quality : "low";
+        const chromaKey = chooseChromaKey(record.color);
+        const direction = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 600) : "";
+        const prompt = `${buildGarmentPrompt(record, chromaKey)}
+Reference note: the input is an existing product cutout of this garment on white.
+Open-garment request: Show this exact same garment laid flat and fully OPEN, as in a flat-lay outfit photo. Undo its real front closure (zipper, buttons or snaps) and spread the two front panels apart to the left and right, as if worn open over an invisible body. Keep both sleeves, the collar and the true length. Draw ONLY the outside of the two front panels, the sleeves and the collar: the vertical gap between the open fronts must be the plain flat chroma background, with no lining, no inside back panel and nothing worn inside, so another top can be placed in that gap later. If the garment has no real front opening, keep it closed exactly as it is.${direction ? `
+User direction: ${direction}` : ""}`;
+        let bytes;
+        try {
+          bytes = await openAIEdit({
+            key,
+            baseUrl: apiBaseUrl(),
+            model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
+            quality,
+            size: "1024x1024",
+            images: [{ data: source, mime: "image/png", name: "source.png" }],
+            prompt,
+          });
+        } catch (error) {
+          return json(error.accountProblem ? 402 : 502, { error: error.message });
+        }
+        try {
+          bytes = await removeChromaBackground(bytes, chromaKey, { tolerance: 48 });
+        } catch {
+          bytes = (await processChromaBackground(bytes, chromaKey, { tolerance: 58 })).bytes;
+        }
+        await store.setBytes(libraryKey(`${id}-open.png`), bytes);
+        // Re-read so edits made while the image was generating are kept
+        const latest = await loadImported(wId);
+        const latestRecord = latest.find((item) => item.id === id);
+        if (!latestRecord) return json(404, { error: "Wardrobe item not found" });
+        latestRecord.openImage = `${LIBRARY_ASSET_ROOT}/${id}-open.png?t=${Date.now()}`;
+        latestRecord.openQuality = quality;
         await saveImported(wId, latest);
         return json(200, latestRecord);
       }

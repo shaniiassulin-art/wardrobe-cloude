@@ -429,6 +429,28 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   const [redoPrompt, setRedoPrompt] = useState("");
 
   const [deciding, setDeciding] = useState(null);
+  const [openBusy, setOpenBusy] = useState(null);
+  const [openError, setOpenError] = useState("");
+
+  // A one-time AI photo of this jacket lying open, used for free in flat lays
+  const handleOpenVersion = async (quality) => {
+    setOpenBusy(quality);
+    setOpenError("");
+    try {
+      const res = await fetch(`/api/import/wardrobe/${item.id}/open-version`, {
+        method: quality === "remove" ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: quality === "remove" ? undefined : JSON.stringify({ quality }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "לא ניתן ליצור גרסה פתוחה כרגע");
+      onModeledGenerated?.(data);
+    } catch (err) {
+      setOpenError(err.message || "לא ניתן ליצור גרסה פתוחה כרגע");
+    } finally {
+      setOpenBusy(null);
+    }
+  };
 
   // Use, keep as another item, or discard the new version
   const decideVersion = async (action) => {
@@ -744,6 +766,38 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
         )}
         {redoError && <p className="item-sheet__error" role="alert">{redoError}</p>}
       </section>
+
+      {OUTER_PARTS.includes(draft.part) && (
+        <section className="item-sheet__section item-sheet__redo" aria-labelledby="item-open-title">
+          <h3 id="item-open-title">ז'קט פתוח בפריסה</h3>
+          {item.openImage ? (
+            <div className="item-open">
+              <button type="button" className="item-open__thumb" onClick={() => setZoomSrc(item.openImage)} aria-label="הגדלת הגרסה הפתוחה">
+                <img src={thumbUrl(item.openImage, 480)} onError={imageFallback(item.openImage)} alt="" />
+              </button>
+              <p className="item-sheet__note">בפריסות עם "ז'קט פתוח" תופיע התמונה הזאת, בלי עלות נוספת.</p>
+            </div>
+          ) : (
+            <p className="item-sheet__note">בלי גרסה פתוחה, הפריסה חותכת את התמונה באמצע ופותחת אותה (חינם). גרסה מה-AI נראית אמיתית יותר. משלמים עליה פעם אחת, ואחר כך היא חינם בכל הפריסות.</p>
+          )}
+          <div className="item-sheet__redo-actions">
+            <button type="button" className="secondary-button" disabled={Boolean(openBusy)} onClick={() => handleOpenVersion("low")}>
+              {openBusy === "low" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
+              <span>{openBusy === "low" ? "יוצר..." : `${item.openImage ? "יצירה מחדש" : "יצירת גרסה פתוחה"} (${PRICES.catalogLow})`}</span>
+            </button>
+            <button type="button" className="secondary-button" disabled={Boolean(openBusy)} onClick={() => handleOpenVersion("medium")}>
+              {openBusy === "medium" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
+              <span>{openBusy === "medium" ? "יוצר..." : `איכות בינונית (${PRICES.catalogMedium})`}</span>
+            </button>
+            {item.openImage && (
+              <button type="button" className="secondary-button" disabled={Boolean(openBusy)} onClick={() => handleOpenVersion("remove")}>
+                <Trash size={15} aria-hidden="true" /> <span>{openBusy === "remove" ? "מוחק..." : "הסרה"}</span>
+              </button>
+            )}
+          </div>
+          {openError && <p className="item-sheet__error" role="alert">{openError}</p>}
+        </section>
+      )}
 
       <section className="item-sheet__section" aria-labelledby="item-details-title">
         <h3 id="item-details-title">פרטי הפריט</h3>
@@ -1136,7 +1190,7 @@ const TOP_PARTS = ["upperbody", "top"];
 const BOTTOM_PARTS = ["lowerbody", "bottom"];
 const DEFAULT_FLATLAY_STYLING = { jacket: "open", top: "out" };
 const STYLING_LABELS = {
-  jacket: { open: "ז'קט פתוח", closed: "ז'קט סגור" },
+  jacket: { open: "ז'קט פתוח", front: "ז'קט שלם מלפנים", behind: "ז'קט שלם מאחור", closed: "ז'קט שלם מלפנים" },
   top: { out: "חולצה בחוץ", tucked: "חולצה בתוך המכנסיים" },
 };
 const stylingSummary = (styling) => Object.entries(styling || {}).map(([key, value]) => STYLING_LABELS[key]?.[value]).filter(Boolean).join(" · ");
@@ -1346,315 +1400,183 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
     { id: "shoes", label: "נעליים" },
     { id: "accessories_up", label: "אקססוריז" },
   ];
+  const tabCount = (tabId) => tabId === "all" ? items.length : items.filter((i) => {
+    if (tabId === "dress") return i.part === "dress" || i.part === "wholebody";
+    if (tabId === "wholebody_up") return OUTER_PARTS.includes(i.part);
+    return i.part === tabId;
+  }).length;
+  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom));
+  const restyle = (key, value) => {
+    setStyling((current) => ({ ...current, [key]: value }));
+    if (generatedLook) handleGenerate({ ...activeStyling, [key]: value });
+  };
+  const switchMode = (mode) => {
+    if (mode === outfitMode) return;
+    if (mode === "flatlay" && !confirmDiscardPaid("תעברי לפריסה")) return;
+    setOutfitMode(mode);
+    setGeneratedLook(null);
+  };
+  const price = outfitMode === "flatlay" ? PRICES.free : lookOnModelPrice(selectedIds.length);
 
   return (
-    <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
-      <div className="builder-modal custom-outfit-modal">
-        <header className="builder-header">
-          <div>
-            <h2>יצירת לוק אישי</h2>
-            <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--muted)" }}>
-              {outfitMode === "flatlay" ? "פריסה אנכית ללא מודל: חולצה, מתחת מכנסיים, ומתחת נעליים · חינם" : `הדמיית הלוק עלייך עם AI · ${lookOnModelPrice(selectedIds.length)}`}
-            </p>
-          </div>
-          <button className="import-icon-button" type="button" onClick={requestClose} aria-label="סגור">
-            <X size={20} />
+    <div className="builder-modal-overlay look-builder-overlay" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
+      <div className="builder-modal look-builder" role="dialog" aria-modal="true" aria-labelledby="look-builder-title">
+        <header className="lb-header">
+          <h2 id="look-builder-title">לוק חדש</h2>
+          <button className="lb-close" type="button" onClick={requestClose} aria-label="סגירה">
+            <X size={18} />
           </button>
         </header>
 
-        {/* MODE SELECTOR */}
-        <div className="outfit-mode-selector">
-          <button
-            type="button"
-            className={`outfit-mode-tab${outfitMode === "flatlay" ? " active" : ""}`}
-            onClick={() => {
-              if (outfitMode === "flatlay" || !confirmDiscardPaid("תעברי לפריסה")) return;
-              setOutfitMode("flatlay");
-              setGeneratedLook(null);
-            }}
-          >
-            <strong>לוק ללא מודל (פריסה שטוחה)</strong>
-            <span>חולצה ומתחת מכנסיים ומתחת נעליים – כמו על גוף אבל בלי אדם · חינם</span>
-          </button>
-          <button
-            type="button"
-            className={`outfit-mode-tab${outfitMode === "modeled" ? " active" : ""}`}
-            onClick={() => {
-              if (outfitMode === "modeled") return;
-              setOutfitMode("modeled");
-              setGeneratedLook(null);
-            }}
-          >
-            <strong>לוק על מודל</strong>
-            <span>הדמיה של הפריטים עלייך עם AI · {lookOnModelPrice(selectedIds.length)}</span>
-          </button>
+        <div className="lb-mode" role="radiogroup" aria-label="סוג הלוק">
+          {[
+            { id: "flatlay", name: "פריסה שטוחה", note: PRICES.free },
+            { id: "modeled", name: "עליי", note: `AI · ${lookOnModelPrice(selectedIds.length)}` },
+          ].map((option) => (
+            <button key={option.id} type="button" role="radio" aria-checked={outfitMode === option.id} className={outfitMode === option.id ? "is-on" : ""} onClick={() => switchMode(option.id)}>
+              <span className="lb-mode__name">{option.name}</span>
+              <span className="lb-mode__note">{option.note}</span>
+            </button>
+          ))}
         </div>
 
-        {/* SELECTED PIECES TRAY */}
-        <section style={{ marginBottom: "16px", padding: "12px 14px", background: "rgba(25, 24, 22, 0.02)", border: "1px solid var(--line)", borderRadius: "4px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: selectedItems.length ? "8px" : "0", flexWrap: "wrap", gap: "8px" }}>
-            <span style={{ fontSize: "11px", fontWeight: "600", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink)" }}>
-              פריטים שנבחרו ({selectedItems.length})
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={completingAI || generating}
-                onClick={handleCompleteWithAI}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  fontSize: "12px",
-                  padding: "4px 10px",
-                  borderRadius: "14px",
-                  border: "1px solid var(--accent)",
-                  color: "var(--accent)",
-                  background: "rgba(110, 48, 46, 0.05)",
-                }}
-              >
-                {completingAI ? <ArrowClockwise size={13} className="spin" /> : <MagicWand size={13} />}
-                <span>{completingAI ? "משלים..." : `השלם עם AI (${PRICES.textAI})`}</span>
-              </button>
+        <div className="lb-body">
+          {generatedLook && (
+            <section className="lb-preview" aria-label="תצוגה מקדימה">
+              <img src={thumbUrl(generatedLook.image, 1080)} onError={imageFallback(generatedLook.image)} alt={generatedLook.name} />
+              {generating && <span className="lb-preview__busy"><ArrowClockwise size={18} className="spin" /></span>}
+            </section>
+          )}
 
-              {selectedItems.length > 0 && (
-                <button
-                  type="button"
-                  style={{ background: "none", border: "none", fontSize: "11px", color: "var(--muted)", cursor: "pointer", textDecoration: "underline" }}
-                  onClick={clearAll}
-                >
-                  נקה הכל
+          <section className="lb-section">
+            <div className="lb-section__head">
+              <h3>פריטים{selectedItems.length > 0 && <span className="lb-count">{selectedItems.length}</span>}</h3>
+              <div className="lb-section__actions">
+                <button type="button" className="lb-link" disabled={completingAI || generating} onClick={handleCompleteWithAI}>
+                  {completingAI ? <ArrowClockwise size={13} className="spin" /> : <MagicWand size={13} />}
+                  <span>{completingAI ? "משלים..." : "השלמה עם AI"}</span>
+                  <small>{PRICES.textAI}</small>
                 </button>
-              )}
-            </div>
-          </div>
-
-          {aiExplanation && (
-            <div style={{ marginBottom: "8px", padding: "6px 10px", background: "rgba(110, 48, 46, 0.06)", borderRight: "3px solid var(--accent)", borderRadius: "2px", fontSize: "12px", color: "var(--ink)" }}>
-              {aiExplanation}
-            </div>
-          )}
-
-          {selectedItems.length > 0 && (
-            <div className="selected-pieces-tray">
-              {selectedItems.map((item) => (
-                <div key={item.id} className="selected-piece-badge">
-                  <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt={item.name} loading="lazy" decoding="async" />
-                  <div>
-                    <strong style={{ display: "block", fontSize: "12px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {item.name}
-                    </strong>
-                    <span style={{ fontSize: "10px", color: "var(--muted)" }}>{TYPE_MAP[item.part]?.singular || item.part}</span>
-                  </div>
-                  <button type="button" onClick={() => removeSelectedItem(item.id)} aria-label={`הסר ${item.name}`}>
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* FREE FLAT-LAY STYLING */}
-        {outfitMode === "flatlay" && (hasOuter && hasInnerTop || (hasTop || hasOuter) && hasBottom) && (
-          <section className="styling-panel" aria-label="סידור הפריסה">
-            <p className="styling-panel__title">איך לסדר את הפריסה <span>חינם, בלי AI</span></p>
-            {hasOuter && hasInnerTop && (
-              <StylingChoice
-                label="ז'קט"
-                value={styling.jacket}
-                disabled={generating}
-                options={[{ id: "open", label: "פתוח" }, { id: "closed", label: "סגור" }]}
-                onChange={(jacket) => { const next = { ...styling, jacket }; setStyling(next); if (generatedLook) handleGenerate({ ...activeStyling, jacket }); }}
-              />
-            )}
-            {(hasTop || hasOuter) && hasBottom && (
-              <StylingChoice
-                label="חולצה"
-                value={styling.top}
-                disabled={generating}
-                options={[{ id: "out", label: "בחוץ" }, { id: "tucked", label: "בתוך המכנסיים" }]}
-                onChange={(top) => { const next = { ...styling, top }; setStyling(next); if (generatedLook) handleGenerate({ ...activeStyling, top }); }}
-              />
-            )}
-          </section>
-        )}
-
-        {/* OUTFIT NOTES */}
-        <section style={{ marginBottom: "16px" }}>
-          <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink)", marginBottom: "6px" }}>
-            {outfitMode === "flatlay" ? "הערות ללוק (אופציונלי)" : "הערה ל-AI (אופציונלי)"}
-          </label>
-          {outfitMode === "flatlay" && (
-            <p style={{ margin: "0 0 6px", fontSize: "11px", color: "var(--muted)" }}>ההערות נשמרות עם הלוק. אם תיצרי ממנו לוק עלייך, הן יעברו ל-AI.</p>
-          )}
-          <textarea
-            value={outfitNotes}
-            onChange={(e) => setOutfitNotes(e.target.value)}
-            placeholder={outfitMode === "flatlay" ? "למשל: עם הז'קט פתוח, להכניס את החולצה למכנסיים" : `${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
-            rows={2}
-            style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid var(--line)", borderRadius: "3px", background: "transparent", color: "var(--ink)", resize: "vertical", fontFamily: "inherit" }}
-          />
-        </section>
-
-        {/* GENERATED PREVIEW */}
-        {generatedLook && (
-          <div className="generated-look-card">
-            <div className="generated-look-photo-wrap">
-              <img className="generated-look-photo" src={thumbUrl(generatedLook.image, 1080)} onError={imageFallback(generatedLook.image)} alt={generatedLook.name} />
-            </div>
-            <div className="generated-look-info">
-              <div>
-                <span style={{ fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--accent)" }}>
-                  תצוגה מקדימה
-                </span>
-                <h3 style={{ margin: "4px 0 6px", fontSize: "17px" }}>{generatedLook.name}</h3>
-                {outfitNotes && (
-                  <p style={{ fontSize: "12px", fontStyle: "italic", color: "var(--muted)", margin: "0 0 8px" }}>
-                    הערות: "{outfitNotes}"
-                  </p>
-                )}
-                <div>
-                  <span style={{ display: "block", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: "6px" }}>
-                    פריטים ({selectedItems.length})
-                  </span>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {selectedItems.map((g) => (
-                      <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "5px", background: "var(--paper)", border: "1px solid var(--line)", padding: "3px 6px", borderRadius: "3px", fontSize: "11px" }}>
-                        <img src={thumbUrl(fittedImage(g.thumbnail || g.image), 160)} onError={imageFallback(g.thumbnail || g.image)} alt="" style={{ width: "18px", height: "18px", objectFit: "contain" }} />
-                        <span>{g.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {selectedItems.length > 0 && <button type="button" className="lb-link is-muted" onClick={clearAll}>ניקוי</button>}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* VISUAL WARDROBE GALLERY */}
-        <section className="builder-section">
-          {/* Filter tabs */}
-          <div className="builder-filter-tabs">
-            {categoryTabs.map((tab) => {
-              const count = tab.id === "all"
-                ? items.length
-                : items.filter((i) => {
-                    if (tab.id === "dress") return i.part === "dress" || i.part === "wholebody";
-                    if (tab.id === "wholebody_up") return i.part === "wholebody_up" || i.part === "outerwear" || i.part === "jacket";
-                    return i.part === tab.id;
-                  }).length;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={`builder-filter-tab${activeFilterTab === tab.id ? " active" : ""}`}
-                  onClick={() => setActiveFilterTab(tab.id)}
-                >
-                  {tab.label} ({count})
-                </button>
-              );
-            })}
-          </div>
+            {aiExplanation && <p className="lb-hint">{aiExplanation}</p>}
 
-          {displayedWardrobeItems.length ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: "10px", maxHeight: "240px", overflowY: "auto", padding: "4px" }}>
-              {displayedWardrobeItems.map((item) => {
-                const isSelected = selectedIds.includes(item.id);
+            {selectedItems.length > 0 ? (
+              <div className="lb-chips">
+                {selectedItems.map((item) => (
+                  <span key={item.id} className="lb-chip">
+                    <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt="" />
+                    <span className="lb-chip__name">{item.name}</span>
+                    <button type="button" onClick={() => removeSelectedItem(item.id)} aria-label={`הסרת ${item.name}`}><X size={12} /></button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="lb-empty">בחרי פריטים מהארון</p>
+            )}
 
+            <div className="lb-tabs" role="tablist" aria-label="קטגוריה">
+              {categoryTabs.map((tab) => {
+                const count = tabCount(tab.id);
+                if (!count && tab.id !== "all") return null;
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`builder-item-choice${isSelected ? " is-selected" : ""}`}
-                    onClick={() => toggleItem(item.id)}
-                    style={{
-                      width: "100%",
-                      height: "125px",
-                      position: "relative",
-                      border: isSelected ? "2px solid var(--accent)" : "1px solid var(--line)",
-                      background: isSelected ? "rgba(110, 48, 46, 0.06)" : "transparent",
-                    }}
-                  >
-                    {isSelected && (
-                      <span style={{ position: "absolute", top: "5px", left: "5px", background: "var(--accent)", color: "white", borderRadius: "50%", width: "18px", height: "18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: "bold" }}>
-                        ✓
-                      </span>
-                    )}
-                    <span style={{ position: "absolute", top: "5px", right: "5px", fontSize: "10px", background: "rgba(25, 24, 22, 0.05)", padding: "1px 5px", borderRadius: "2px", color: "var(--muted)" }}>
-                      {TYPE_MAP[item.part]?.singular || item.part}
-                    </span>
-                    <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt={item.name} style={{ width: "56px", height: "56px", objectFit: "contain", marginTop: "14px", marginBottom: "4px" }} />
-                    <span style={{ fontSize: "11px", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: "1.2", padding: "0 2px" }}>
-                      {item.name}
-                    </span>
+                  <button key={tab.id} type="button" role="tab" aria-selected={activeFilterTab === tab.id} className={activeFilterTab === tab.id ? "is-on" : ""} onClick={() => setActiveFilterTab(tab.id)}>
+                    {tab.label} <small>{count}</small>
                   </button>
                 );
               })}
             </div>
-          ) : (
-            <p style={{ fontSize: "12px", color: "var(--muted)", margin: "16px 0", textAlign: "center" }}>
-              אין פריטים בקטגוריה זו.
-            </p>
-          )}
-        </section>
 
-        {/* OPTIONAL NAME */}
-        <div style={{ marginTop: "12px" }}>
-          <input
-            type="text"
-            value={lookName}
-            onChange={(e) => setLookName(e.target.value)}
-            placeholder="שם הלוק (אופציונלי)"
-            style={{ width: "100%", padding: "7px 10px", fontSize: "13px", border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: "3px" }}
-          />
+            {displayedWardrobeItems.length ? (
+              <div className="lb-grid">
+                {displayedWardrobeItems.map((item) => {
+                  const isSelected = selectedIds.includes(item.id);
+                  return (
+                    <button key={item.id} type="button" className={`lb-tile${isSelected ? " is-on" : ""}`} aria-pressed={isSelected} onClick={() => toggleItem(item.id)}>
+                      <span className="lb-tile__img">
+                        <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
+                        <span className="lb-tile__check" aria-hidden="true">{isSelected && <Check size={12} weight="bold" />}</span>
+                      </span>
+                      <span className="lb-tile__name">{item.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="lb-empty">אין פריטים בקטגוריה הזאת</p>
+            )}
+          </section>
+
+          {showStyling && (
+            <section className="lb-section">
+              <div className="lb-section__head">
+                <h3>סידור</h3>
+                <span className="lb-tag">חינם, בלי AI</span>
+              </div>
+              {hasOuter && hasInnerTop && (
+                <StylingChoice
+                  label="ז'קט"
+                  value={styling.jacket}
+                  disabled={generating}
+                  options={[{ id: "open", label: "פתוח" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }]}
+                  onChange={(value) => restyle("jacket", value)}
+                />
+              )}
+              {(hasTop || hasOuter) && hasBottom && (
+                <StylingChoice
+                  label="חולצה"
+                  value={styling.top}
+                  disabled={generating}
+                  options={[{ id: "out", label: "בחוץ" }, { id: "tucked", label: "בפנים" }]}
+                  onChange={(value) => restyle("top", value)}
+                />
+              )}
+            </section>
+          )}
+
+          <section className="lb-section">
+            <label className="lb-label" htmlFor="look-builder-notes">{outfitMode === "flatlay" ? "הערות" : "הערה ל-AI"} <span>אופציונלי</span></label>
+            <textarea
+              id="look-builder-notes"
+              className="lb-input"
+              value={outfitNotes}
+              onChange={(e) => setOutfitNotes(e.target.value)}
+              placeholder={outfitMode === "flatlay" ? "נשמרות עם הלוק ועוברות ל-AI אם תיצרי אותו עלייך" : `${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
+              rows={2}
+            />
+            <label className="lb-label" htmlFor="look-builder-name">שם הלוק <span>אופציונלי</span></label>
+            <input id="look-builder-name" className="lb-input" type="text" value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder={selectedItems.length ? selectedItems.map((i) => i.name).slice(0, 3).join(" + ") : "למשל: ערב עם חברות"} />
+          </section>
         </div>
 
-        {builderError && <p style={{ color: "var(--accent)", fontSize: "13px", margin: "10px 0 0" }}>{builderError}</p>}
-        {paidUnsaved && <p className="paid-unsaved-note" role="status">הלוק עלייך כבר שולם. שמרי אותו כדי לא לאבד אותו.</p>}
-
-        {/* ACTIONS - SINGLE OCCURRENCE, NO STARS */}
-        <div className="builder-actions" style={{ marginTop: "18px" }}>
-          <button className="secondary-button" type="button" disabled={generating || saving} onClick={requestClose}>
-            ביטול
-          </button>
-          {!generatedLook ? (
-            <button
-              className="primary-button"
-              type="button"
-              disabled={!selectedIds.length || generating}
-              onClick={() => handleGenerate()}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-            >
-              {generating && <ArrowClockwise size={16} className="spin" />}
-              <span>{generating ? "יוצר לוק..." : outfitMode === "flatlay" ? "צור פריסת לוק (חינם)" : `צור לוק עליי (${lookOnModelPrice(selectedIds.length)})`}</span>
-            </button>
-          ) : (
-            <>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={generating || saving}
-                onClick={() => handleGenerate()}
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                {generating && <ArrowClockwise size={16} className="spin" />}
-                <span>{generating ? "יוצר..." : outfitMode === "flatlay" ? "צור מחדש (חינם)" : `צור מחדש (${lookOnModelPrice(selectedIds.length)})`}</span>
+        <footer className="lb-footer">
+          {builderError && <p className="lb-error" role="alert">{builderError}</p>}
+          {paidUnsaved && !builderError && <p className="lb-paid" role="status">הלוק כבר שולם. שמרי אותו כדי לא לאבד אותו.</p>}
+          <div className="lb-footer__actions">
+            <button className="lb-button is-ghost" type="button" disabled={generating || saving} onClick={requestClose}>ביטול</button>
+            {generatedLook && (
+              <button className="lb-button" type="button" disabled={generating || saving} onClick={() => handleGenerate()}>
+                {generating && <ArrowClockwise size={15} className="spin" />}
+                <span>{generating ? "יוצר..." : "שוב"}</span>
+                {!generating && <small>{price}</small>}
               </button>
-              <button
-                className="primary-button"
-                type="button"
-                disabled={saving || generating}
-                onClick={handleSave}
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <FloppyDisk size={16} />
-                <span>{saving ? "שומר..." : "שמור לוק"}</span>
+            )}
+            {generatedLook ? (
+              <button className="lb-button is-primary" type="button" disabled={saving || generating} onClick={handleSave}>
+                <FloppyDisk size={15} />
+                <span>{saving ? "שומר..." : "שמירה"}</span>
               </button>
-            </>
-          )}
-        </div>
+            ) : (
+              <button className="lb-button is-primary" type="button" disabled={!selectedIds.length || generating} onClick={() => handleGenerate()}>
+                {generating && <ArrowClockwise size={15} className="spin" />}
+                <span>{generating ? "יוצר..." : "יצירה"}</span>
+                {!generating && <small>{price}</small>}
+              </button>
+            )}
+          </div>
+        </footer>
       </div>
     </div>
   );
