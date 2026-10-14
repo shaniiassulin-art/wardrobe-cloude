@@ -995,11 +995,11 @@ function AiSpendingSection() {
               <strong>{formatUsd(actual?.configured && Number.isFinite(actual.monthUsd) ? actual.monthUsd : estimate.monthUsd)}</strong>
               <small>{formatIls(actual?.configured && Number.isFinite(actual.monthUsd) ? actual.monthUsd : estimate.monthUsd)} · {actual?.configured && Number.isFinite(actual.monthUsd) ? "לפי OpenAI" : "הערכה"}</small>
             </div>
-            {actual?.configured && Number.isFinite(actual.allTimeUsd) && (
+            {actual?.configured && Number.isFinite(actual.yearUsd) && (
               <div className="ai-spend-tile">
-                <span className="ai-spend-tile__label">נוצל מאז ומתמיד</span>
-                <strong>{formatUsd(actual.allTimeUsd)}</strong>
-                <small>{formatIls(actual.allTimeUsd)} · לפי OpenAI</small>
+                <span className="ai-spend-tile__label">נוצל בשנה האחרונה</span>
+                <strong>{formatUsd(actual.yearUsd)}</strong>
+                <small>{formatIls(actual.yearUsd)} · לפי OpenAI</small>
               </div>
             )}
           </div>
@@ -1021,6 +1021,7 @@ function AiSpendingSection() {
           <p className="account-hint">
             {balance ? `היתרה הוזנה ב-${formatDate(balance.setAt)}. ` : ""}
             OpenAI לא מאפשרת לקרוא את היתרה אוטומטית, אז מעתיקים אותה מעמוד החיוב (בדולרים), והאתר מוריד ממנה כל יצירה.
+            {actual?.configured && !actual.error && (actual.projectFiltered ? " החיובים הם של הפרויקט של האתר בלבד." : " החיובים כוללים את כל המפתחות בחשבון OpenAI, לא רק את המפתח של האתר.")}
             {!actual?.configured && " הסכומים הם הערכה לפי מחירי המודלים. כדי לראות את החיובים האמיתיים ואת כל מה שנוצל מאז ומתמיד, צריך להוסיף ב-Netlify מפתח מנהל של OpenAI בשם OPENAI_ADMIN_KEY."}
           </p>
           {actual?.error && <p className="account-error" role="alert">{actual.error}</p>}

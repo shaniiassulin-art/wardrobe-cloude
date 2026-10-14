@@ -1378,9 +1378,9 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     if (summary.actual.configured) {
       try {
         summary.actual.monthUsd = await openAICosts(monthStart);
-        // Everything since 2023, when the current billing system started
-        summary.actual.allTimeUsd = await openAICosts(Date.UTC(2023, 0, 1) / 1000);
-        if (balance?.setAt) summary.actual.sinceBalanceUsd = await openAICosts(Date.parse(balance.setAt) / 1000);
+        // OpenAI keeps cost data for one year only
+        summary.actual.yearUsd = await openAICosts(Date.now() / 1000 - 364 * 24 * 3600);
+        if (balance?.setAt) summary.actual.sinceBalanceUsd = await openAICosts(Math.max(Date.parse(balance.setAt) / 1000, Date.now() / 1000 - 364 * 24 * 3600));
       } catch (error) {
         summary.actual.error = error.message;
       }
