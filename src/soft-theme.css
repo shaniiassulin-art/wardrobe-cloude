@@ -472,3 +472,4 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
   .ai-spend-tile { padding: 10px 8px; }
   .ai-spend-tile strong { font-size: 17px; }
 }
+.account-section > .ai-spend-tile { max-width: 220px; margin-bottom: 8px; }
