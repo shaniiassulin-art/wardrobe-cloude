@@ -914,6 +914,136 @@ function LookViewerModal({ look, onClose, onDelete, onPack, onCreateOnMe, suitca
   );
 }
 
+const USD_TO_ILS = 3.6;
+const formatUsd = (value) => `$${(Number(value) || 0).toFixed((Number(value) || 0) < 10 ? 2 : 1)}`;
+const formatIls = (value) => `כ-${Math.round((Number(value) || 0) * USD_TO_ILS * 100) / 100} ₪`;
+const formatDate = (iso) => { try { return new Date(iso).toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" }); } catch { return ""; } };
+
+// How much the site's OpenAI key has spent, and what is left of the balance
+function AiSpendingSection() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/import/billing", { cache: "no-store" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "לא ניתן לטעון את נתוני השימוש");
+      setData(result);
+      setError("");
+    } catch (err) {
+      setError(err.message || "לא ניתן לטעון את נתוני השימוש");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const saveBalance = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch("/api/import/billing/balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balanceUsd: input === "" ? null : Number(input) }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "לא ניתן לשמור");
+      setData(result);
+      setEditing(false);
+      setError("");
+    } catch (err) {
+      setError(err.message || "לא ניתן לשמור");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const balance = data?.balance;
+  const actual = data?.actual;
+  const estimate = data?.estimate;
+  const low = balance && balance.remainingUsd < 1;
+
+  return (
+    <section className="account-section" aria-labelledby="account-ai-title">
+      <h3 id="account-ai-title">שימוש ב-AI</h3>
+      {loading && !data ? <p className="account-hint">טוען...</p> : data && (
+        <>
+          <div className="ai-spend-grid">
+            <div className={`ai-spend-tile${low ? " is-low" : ""}`}>
+              <span className="ai-spend-tile__label">נשאר בחשבון</span>
+              {balance ? (
+                <>
+                  <strong>{formatUsd(Math.max(0, balance.remainingUsd))}</strong>
+                  <small>{formatIls(Math.max(0, balance.remainingUsd))} · {balance.source === "actual" ? "לפי OpenAI" : "הערכה"}</small>
+                </>
+              ) : (
+                <>
+                  <strong>—</strong>
+                  <small>צריך להזין יתרה</small>
+                </>
+              )}
+            </div>
+            <div className="ai-spend-tile">
+              <span className="ai-spend-tile__label">נוצל החודש</span>
+              <strong>{formatUsd(actual?.configured && Number.isFinite(actual.monthUsd) ? actual.monthUsd : estimate.monthUsd)}</strong>
+              <small>{formatIls(actual?.configured && Number.isFinite(actual.monthUsd) ? actual.monthUsd : estimate.monthUsd)} · {actual?.configured && Number.isFinite(actual.monthUsd) ? "לפי OpenAI" : "הערכה"}</small>
+            </div>
+            <div className="ai-spend-tile">
+              <span className="ai-spend-tile__label">נוצל דרך האתר</span>
+              <strong>{formatUsd(estimate.totalUsd)}</strong>
+              <small>{estimate.since ? `מאז ${formatDate(estimate.since)}` : "עוד לא היה שימוש"} · הערכה</small>
+            </div>
+          </div>
+
+          {editing ? (
+            <form className="account-row" onSubmit={saveBalance}>
+              <input className="account-input" type="number" inputMode="decimal" min="0" step="0.01" dir="ltr" placeholder="למשל 10" value={input} onChange={(e) => setInput(e.target.value)} aria-label="היתרה הנוכחית בדולרים" autoFocus />
+              <button className="secondary-button" type="submit" disabled={saving}>{saving ? "שומר..." : "שמירה"}</button>
+              <button className="secondary-button" type="button" onClick={() => setEditing(false)}>ביטול</button>
+            </form>
+          ) : (
+            <div className="account-row ai-spend-actions">
+              <button className="secondary-button" type="button" onClick={() => { setInput(balance ? String(Math.max(0, Number(balance.remainingUsd.toFixed(2)))) : ""); setEditing(true); }}>
+                {balance ? "עדכון היתרה" : "הזנת היתרה"}
+              </button>
+              <a className="secondary-button" href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noreferrer">לחשבון OpenAI</a>
+            </div>
+          )}
+          <p className="account-hint">
+            {balance ? `היתרה הוזנה ב-${formatDate(balance.setAt)}. ` : ""}
+            OpenAI לא מאפשרת לקרוא את היתרה אוטומטית, אז מעתיקים אותה מעמוד החיוב (בדולרים), והאתר מוריד ממנה כל יצירה.
+            {!actual?.configured && " הסכומים הם הערכה לפי מחירי המודלים."}
+          </p>
+          {actual?.error && <p className="account-error" role="alert">{actual.error}</p>}
+
+          {!!estimate.recent?.length && (
+            <details className="ai-spend-recent">
+              <summary>פעולות אחרונות</summary>
+              <ul>
+                {estimate.recent.map((entry) => (
+                  <li key={entry.at + entry.action}>
+                    <span>{entry.action}</span>
+                    <span className="account-hint">{formatDate(entry.at)}</span>
+                    <span dir="ltr">{formatUsd(entry.usd)}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+      {error && <p className="account-error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
 function UserAccountModal({
   user,
   stats,
@@ -1050,6 +1180,8 @@ function UserAccountModal({
             </button>
           </div>
         </section>
+
+        <AiSpendingSection />
 
         {/* 3. Phone */}
         <section className="account-section" aria-labelledby="account-phone-title">

@@ -453,3 +453,22 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
   .look-builder .styling-choice__options button { padding: 7px 11px; }
   .lb-input { font-size: 16px; }
 }
+
+/* Profile: AI spending */
+.ai-spend-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.ai-spend-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); min-width: 0; }
+.ai-spend-tile__label { font-size: 11px; color: var(--muted); }
+.ai-spend-tile strong { font-size: 20px; font-weight: 600; color: var(--ink); direction: ltr; text-align: right; }
+.ai-spend-tile small { font-size: 10px; color: var(--muted); line-height: 1.35; }
+.ai-spend-tile.is-low strong { color: var(--accent); }
+.ai-spend-actions { flex-wrap: wrap; }
+.ai-spend-actions a.secondary-button { text-decoration: none; color: var(--ink); display: inline-flex; align-items: center; }
+.ai-spend-recent { margin-top: 8px; font-size: 13px; }
+.ai-spend-recent summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.ai-spend-recent ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ai-spend-recent li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+@media (max-width: 420px) {
+  .ai-spend-grid { gap: 6px; }
+  .ai-spend-tile { padding: 10px 8px; }
+  .ai-spend-tile strong { font-size: 17px; }
+}

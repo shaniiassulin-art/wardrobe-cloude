@@ -1124,7 +1124,7 @@ export async function fitGarmentToSquare(bytes, size = 1024, occupancy = 0.9) {
     .toBuffer();
 }
 
-async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
+async function openAIEditRequest({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   const validEditModel = (!model || model.includes("dall-e") || model.includes("mini")) ? "gpt-image-2" : model;
   form.set("model", validEditModel);
@@ -1159,7 +1159,7 @@ async function openAIEdit({ key, baseUrl, model, prompt, images, size, backgroun
   return Buffer.from(encoded, "base64");
 }
 
-async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
+async function openAIAnalyzeRequest({ key, baseUrl, model, image, mime }) {
   const validVisionModel = (!model || model.includes("5.4") || !model.includes("gpt-4")) ? "gpt-4o-mini" : model;
   const response = await fetch(`${baseUrl}/responses`, {
     method: "POST",
@@ -1258,6 +1258,30 @@ const LONG_ROUTES = [
  *   requests). Locally it can simply run the task; on Netlify it starts a
  *   background function that calls `runDeferred(task)`.
  */
+// Estimated OpenAI charge per request, in US dollars (gpt-image-2 prices checked
+// October 2026). Several reference photos are sent as one combined image, so every
+// edit has one image input plus the written prompt.
+const IMAGE_OUTPUT_USD = {
+  low: { square: 0.006, wide: 0.005 },
+  medium: { square: 0.053, wide: 0.041 },
+  high: { square: 0.211, wide: 0.165 },
+};
+const IMAGE_INPUT_USD = 0.006;
+// gpt-4o-mini, per token
+const TEXT_INPUT_USD = 0.15 / 1e6;
+const TEXT_OUTPUT_USD = 0.6 / 1e6;
+
+export function estimateImageUsd({ quality = "high", size = "1024x1024" } = {}) {
+  const table = IMAGE_OUTPUT_USD[quality] || IMAGE_OUTPUT_USD.high;
+  return (size === "1024x1024" ? table.square : table.wide) + IMAGE_INPUT_USD;
+}
+
+export function estimateTextUsd(usage = {}) {
+  const input = Number(usage.prompt_tokens ?? usage.input_tokens) || 800;
+  const output = Number(usage.completion_tokens ?? usage.output_tokens) || 200;
+  return (input * TEXT_INPUT_USD) + (output * TEXT_OUTPUT_USD);
+}
+
 export function createWardrobeApi({ store, env = {}, defer } = {}) {
   let serverSettings = null;
   const running = new Map();
@@ -1266,6 +1290,114 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   const setting = (name, fallback = "") =>
     String(serverSettings?.[name] || env[name] || process.env[name] || fallback).trim();
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
+
+  // ── AI spending ──
+  // Every paid OpenAI request made by the site is written down with its estimated
+  // cost. The log is shared by all wardrobes, since they share one OpenAI key.
+  const SPEND_KEY = "billing/spend.json";
+  const BALANCE_KEY = "billing/balance.json";
+  async function recordSpend(action, usd, wardrobeId = null) {
+    try {
+      const log = (await store.getJSON(SPEND_KEY).catch(() => null)) || { since: new Date().toISOString(), totalUsd: 0, months: {}, recent: [] };
+      const at = new Date().toISOString();
+      const month = at.slice(0, 7);
+      log.totalUsd = Number(((log.totalUsd || 0) + usd).toFixed(6));
+      log.months = { ...(log.months || {}), [month]: Number((((log.months || {})[month] || 0) + usd).toFixed(6)) };
+      log.recent = [{ at, action, usd: Number(usd.toFixed(5)), wardrobeId }, ...(log.recent || [])].slice(0, 60);
+      await store.setJSON(SPEND_KEY, log);
+    } catch (error) {
+      console.warn("Could not record AI spend:", error.message);
+    }
+  }
+
+  async function openAIEdit(options) {
+    const bytes = await openAIEditRequest(options);
+    const action = options.action
+      || (options.size && options.size !== "1024x1024" ? "פריט עליי"
+        : (options.images?.length || 0) > 1 ? "לוק עליי" : "תמונת קטלוג");
+    await recordSpend(action, estimateImageUsd(options), options.wardrobeId);
+    return bytes;
+  }
+
+  async function openAIAnalyze(options) {
+    const items = await openAIAnalyzeRequest(options);
+    await recordSpend("זיהוי בגדים בתמונה", 0.001);
+    return items;
+  }
+
+  // Actual charges from OpenAI. Needs an Admin key (OPENAI_ADMIN_KEY), because
+  // regular project keys cannot read billing. OpenAI has no API for the remaining
+  // credit balance, so the balance is entered by the user and spending is subtracted.
+  async function openAICosts(startTime) {
+    const adminKey = setting("OPENAI_ADMIN_KEY").trim();
+    if (!adminKey) return null;
+    const projectId = setting("OPENAI_PROJECT_ID").trim();
+    let total = 0;
+    let page = null;
+    for (let i = 0; i < 6; i++) {
+      const params = new URLSearchParams({ start_time: String(Math.floor(startTime)), bucket_width: "1d", limit: "180" });
+      if (projectId) params.append("project_ids", projectId);
+      if (page) params.set("page", page);
+      const response = await fetch(`${apiBaseUrl()}/organization/costs?${params}`, {
+        headers: { Authorization: `Bearer ${checkApiKey(adminKey, "OpenAI")}` },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const reason = response.status === 401 || response.status === 403
+          ? "מפתח המנהל של OpenAI לא תקין או שאין לו הרשאה לנתוני חיוב."
+          : result.error?.message || `OpenAI החזיר שגיאה (${response.status})`;
+        throw new Error(reason);
+      }
+      for (const bucket of result.data || []) {
+        for (const row of bucket.results || []) total += Number(row.amount?.value) || 0;
+      }
+      if (!result.has_more || !result.next_page) break;
+      page = result.next_page;
+    }
+    return total;
+  }
+
+  async function billingSummary() {
+    const log = (await store.getJSON(SPEND_KEY).catch(() => null)) || { since: null, totalUsd: 0, months: {}, recent: [] };
+    const balance = await store.getJSON(BALANCE_KEY).catch(() => null);
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7);
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+
+    const summary = {
+      estimate: {
+        since: log.since,
+        totalUsd: log.totalUsd || 0,
+        monthUsd: (log.months || {})[month] || 0,
+        recent: (log.recent || []).slice(0, 8),
+      },
+      actual: { configured: Boolean(setting("OPENAI_ADMIN_KEY").trim()), projectFiltered: Boolean(setting("OPENAI_PROJECT_ID").trim()) },
+      balance: null,
+    };
+
+    if (summary.actual.configured) {
+      try {
+        summary.actual.monthUsd = await openAICosts(monthStart);
+        if (balance?.setAt) summary.actual.sinceBalanceUsd = await openAICosts(Date.parse(balance.setAt) / 1000);
+      } catch (error) {
+        summary.actual.error = error.message;
+      }
+    }
+
+    if (balance && Number.isFinite(balance.balanceUsd)) {
+      const usedFromActual = Number.isFinite(summary.actual.sinceBalanceUsd) ? summary.actual.sinceBalanceUsd : null;
+      const usedFromEstimate = Math.max(0, (log.totalUsd || 0) - (balance.spentAtSet || 0));
+      const used = usedFromActual ?? usedFromEstimate;
+      summary.balance = {
+        enteredUsd: balance.balanceUsd,
+        setAt: balance.setAt,
+        usedSinceUsd: used,
+        remainingUsd: balance.balanceUsd - used,
+        source: usedFromActual === null ? "estimate" : "actual",
+      };
+    }
+    return summary;
+  }
 
   async function loadSettings() {
     if (!serverSettings) serverSettings = (await store.getJSON("settings.json").catch(() => null)) || {};
@@ -1891,6 +2023,7 @@ Respond in strict JSON format:
 
         if (res.ok) {
           const completion = await res.json();
+          await recordSpend("השלמת לוק עם AI", estimateTextUsd(completion.usage), wardrobeId);
           const content = completion.choices?.[0]?.message?.content;
           if (content) {
             const parsed = JSON.parse(content);
@@ -2306,7 +2439,9 @@ Respond in strict JSON format:
             ],
           }),
         });
-        const content = (await res.json())?.choices?.[0]?.message?.content;
+        const completion = await res.json();
+        if (res.ok) await recordSpend("תרגום תגיות", estimateTextUsd(completion?.usage), wardrobeId);
+        const content = completion?.choices?.[0]?.message?.content;
         const translations = JSON.parse(content || "{}").translations || {};
         for (const [tag, hebrew] of Object.entries(translations)) {
           if (typeof hebrew === "string" && hebrew.trim() && unknown.includes(tag.toLowerCase())) map.set(tag.toLowerCase(), hebrew.trim().slice(0, 40));
@@ -2490,6 +2625,21 @@ Respond in strict JSON format:
         await saveImported(wId, latest);
         return json(200, latestRecord);
       }
+      if (url.pathname === "/api/import/billing" && request.method === "GET") {
+        return json(200, await billingSummary());
+      }
+      if (url.pathname === "/api/import/billing/balance" && request.method === "POST") {
+        const input = await body(request);
+        if (input.balanceUsd === null) {
+          await store.delete(BALANCE_KEY).catch(() => {});
+          return json(200, await billingSummary());
+        }
+        const balanceUsd = Number(input.balanceUsd);
+        if (!Number.isFinite(balanceUsd) || balanceUsd < 0 || balanceUsd > 100000) return json(400, { error: "יש להזין סכום תקין בדולרים." });
+        const log = (await store.getJSON(SPEND_KEY).catch(() => null)) || {};
+        await store.setJSON(BALANCE_KEY, { balanceUsd, setAt: new Date().toISOString(), spentAtSet: log.totalUsd || 0 });
+        return json(200, await billingSummary());
+      }
       const openVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/open-version$/i);
       if (openVersionMatch && (request.method === "POST" || request.method === "DELETE")) {
         // A photo of a jacket lying open, made once with AI and reused for free in every flat lay
@@ -2527,6 +2677,7 @@ User direction: ${direction}` : ""}`;
             size: "1024x1024",
             images: [{ data: source, mime: "image/png", name: "source.png" }],
             prompt,
+            action: "ז'קט פתוח",
           });
         } catch (error) {
           return json(error.accountProblem ? 402 : 502, { error: error.message });
