@@ -4,6 +4,8 @@ import "./import-flow.css";
 import { isImageFile, toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { PRICES } from "./prices.js";
+import { FitPicker } from "./FitPicker.jsx";
+import { fitForPart } from "./fit-options.js";
 
 const API = "/api/import/jobs";
 const CONFIG_API = "/api/import/config";
@@ -254,6 +256,7 @@ function defaultDraft(job) {
     color: metadata.color || "#d8d0c2",
     secondaryColor: metadata.secondaryColor || "",
     tags: Array.isArray(metadata.tags) ? metadata.tags.join(", ") : (metadata.tags || ""),
+    fit: metadata.fit || {},
   };
 }
 
@@ -282,6 +285,7 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
           <>
             <div className="import-field"><label htmlFor={`name-${job.id}`}>שם הפריט</label><input id={`name-${job.id}`} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div>
             <div className="import-field"><label htmlFor={`part-${job.id}`}>קטגוריה</label><select id={`part-${job.id}`} value={draft.part} onChange={(event) => setDraft({ ...draft, part: event.target.value })}>{PARTS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></div>
+            <div className="import-field"><FitPicker compact part={draft.part} fit={draft.fit} onChange={(fit) => setDraft({ ...draft, fit })} /></div>
             <div className="import-field"><label htmlFor={`primary-${job.id}`}>צבע ראשי</label><div className="import-color-row"><input id={`primary-${job.id}`} type="color" value={primaryValid ? draft.color : "#000000"} onChange={(event) => setDraft({ ...draft, color: event.target.value })} /><input aria-label="צבע ראשי" aria-invalid={!primaryValid} value={draft.color} onChange={(event) => setDraft({ ...draft, color: event.target.value })} /></div></div>
             <div className="import-field"><label htmlFor={`secondary-${job.id}`}>צבע משני <span>אופציונלי</span></label><input id={`secondary-${job.id}`} type="text" aria-invalid={!secondaryValid} placeholder="#קוד צבע" value={draft.secondaryColor} onChange={(event) => setDraft({ ...draft, secondaryColor: event.target.value })} /></div>
             <div className="import-field"><label htmlFor={`tags-${job.id}`}>מאפיינים</label><input id={`tags-${job.id}`} value={draft.tags} placeholder="יומיומי, כותנה, פסים" onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></div>
@@ -493,7 +497,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     try {
       if (stage === "garment" && action === "approve") {
         const draft = drafts[job.id];
-        const metadata = { ...draft, secondaryColor: draft.secondaryColor || null, tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean) };
+        const metadata = { ...draft, fit: fitForPart(draft.fit, draft.part), secondaryColor: draft.secondaryColor || null, tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean) };
         await api(`${API}/${job.id}/metadata`, { method: "PATCH", body: JSON.stringify({ metadata }) });
         const updated = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
         const garmentPath = `/api/import/library/import-${job.id}-garment.png`;

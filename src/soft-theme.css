@@ -521,3 +521,13 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .look-card__garment-thumb-btn { padding: 0; border: 0; background: transparent; cursor: zoom-in; border-radius: 8px; }
 .look-card__garment-thumb-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media (max-width: 520px) { .look-card__garment-thumb { width: 40px; height: 40px; } }
+
+/* Garment length: multiple choice */
+.fit-picker { display: grid; gap: 8px; margin: 4px 0 14px; }
+.fit-picker__title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.fit-picker__title small { font-weight: 400; font-size: 11px; color: var(--muted); margin-inline-start: 6px; }
+.fit-picker__options { display: flex; flex-wrap: wrap; gap: 6px; }
+.fit-picker__options button { padding: 7px 13px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; transition: background 140ms ease, color 140ms ease; }
+.fit-picker__options button.is-on { background: var(--ink); color: var(--paper); box-shadow: none; }
+.fit-picker.is-compact { margin: 0; }
+.fit-picker.is-compact .fit-picker__options button { padding: 6px 11px; font-size: 12px; }

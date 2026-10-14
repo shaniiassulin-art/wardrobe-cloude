@@ -95,6 +95,7 @@ function normalizeMetadata(value = {}) {
     secondaryColor,
     tags: Array.isArray(metadata.tags) ? metadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 12) : [],
     boundingBox: normalizeBoundingBox(metadata.boundingBox),
+    fit: normalizeFit(metadata.fit),
   };
 }
 
@@ -580,6 +581,24 @@ export function normalizeFlatlayStyling(input = {}) {
   return styling;
 }
 
+// How long each piece is, measured on the body in "torso units":
+// shoulders = 0, waist (where trousers start) = 1.
+// The flat lay sizes and stacks the pieces by these so lengths look true to life.
+export const GARMENT_FIT = {
+  top: { crop: 0.82, waist: 1.0, hip: 1.25, bottom: 1.45, long: 1.75 },
+  jacket: { crop: 0.85, waist: 1.0, hip: 1.25, bottom: 1.45, knee: 2.25, long: 2.85 },
+  // Where trousers/skirts end. "onShoe" = falls over the shoe
+  bottom: { shorts: 1.6, knee: 2.25, midi: 2.65, ankle: 3.0, onShoe: 3.15 },
+  dress: { mini: 1.85, knee: 2.3, midi: 2.7, maxi: 3.1 },
+};
+const ANKLE = 3.0;
+
+export function normalizeFit(fit = {}) {
+  const length = typeof fit?.length === "string" ? fit.length : null;
+  const known = Object.values(GARMENT_FIT).some((table) => length in table);
+  return known ? { length } : {};
+}
+
 // Cuts a garment photo down the middle into its left and right halves
 async function splitDownTheMiddle(buffer) {
   const { width, height } = await sharp(buffer).metadata();
@@ -619,6 +638,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
         openBuffer = await sharp(entry.openBuffer).trim().toBuffer().catch(() => entry.openBuffer);
       }
       const openMeta = openBuffer ? await sharp(openBuffer).metadata().catch(() => null) : null;
+      if (entry.item) entry.item = { ...entry.item, fit: normalizeFit(entry.item.fit) };
       processed.push({
         buffer: imgBuffer,
         openBuffer,
@@ -765,14 +785,23 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       .png()
       .toBuffer();
 
-    const shadow = await sharp(resized)
-      .tint({ r: 35, g: 30, b: 25 })
-      .blur(blur)
-      .linear(opacity, 0)
-      .png()
-      .toBuffer();
+    // Soft shadow: the piece's silhouette, padded so the blur is never cut off at
+    // the edge of the picture (a cut-off blur shows up as a hard dark line)
+    const pad = Math.ceil(blur * 3);
+    const { data: shadowData, info: shadowInfo } = await sharp(resized)
+      .ensureAlpha()
+      .extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    for (let index = 0; index < shadowData.length; index += 4) {
+      shadowData[index] = 35;
+      shadowData[index + 1] = 30;
+      shadowData[index + 2] = 25;
+      shadowData[index + 3] = Math.round(shadowData[index + 3] * opacity);
+    }
+    const shadow = await sharp(shadowData, { raw: shadowInfo }).blur(blur).png().toBuffer();
 
-    const layers = [{ input: shadow, top: t + 4, left: l + 2 }, { input: resized, top: t, left: l }];
+    const layers = [{ input: shadow, top: t + 4 - pad, left: l + 2 - pad }, { input: resized, top: t, left: l }];
     composites.push(...layers);
     layersOf.set(item, [...(layersOf.get(item) || []), ...layers]);
 
@@ -798,6 +827,129 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     currentY += maxRowH + 15;
   }
 
+  // One piece of each kind (the usual outfit): lay it out like a body, using each
+  // piece's length so a long top covers the waistband, trousers fall on the shoe, etc.
+  const simpleColumn = outerwear.length <= 1 && (tops.length + dresses.length) <= 1 && bottoms.length <= 1
+    && !(dresses.length && bottoms.length) && (outerwear.length + tops.length + dresses.length + bottoms.length) > 0;
+  if (simpleColumn) {
+    const T = 300; // shoulder-to-waist, in pixels
+    const shoulderY = currentY;
+    const waistY = shoulderY + T;
+    const lengthOf = (piece, table, fallback) => GARMENT_FIT[table][piece?.item?.fit?.length] ?? fallback;
+    // Size a piece so it reaches `hem` (torso units below its start). Garments are
+    // about as wide as the body whatever their length, so the width stays near
+    // `baseW` and the photo's own proportions decide the rest.
+    const sizeTo = (piece, startUnits, hemUnits, baseW, ratio = piece.ratio) => {
+      const wanted = Math.max(60, (hemUnits - startUnits) * T) / ratio;
+      const w = Math.max(baseW * 0.82, Math.min(baseW * 1.2, wanted));
+      return { w: Math.round(w), h: Math.round(w * ratio) };
+    };
+
+    const jacketPiece = outerwear[0] || null;
+    const innerPiece = tops[0] || dresses[0] || null;
+    const bottomPiece = bottoms[0] || null;
+    const isDressInner = Boolean(dresses[0]);
+    const isSkirt = bottomPiece && /skirt|חצאית/.test(bottomPiece.nameLower);
+    const draw = []; // [piece, box, extra] in drawing order, first is lowest
+
+    let innerBox = null;
+    if (innerPiece) {
+      const hem = isDressInner ? lengthOf(innerPiece, "dress", 2.3) : lengthOf(innerPiece, "top", 1.25);
+      const size = sizeTo(innerPiece, 0, hem, isDressInner ? 420 : 400);
+      innerBox = { left: centerX - size.w / 2, top: shoulderY + (jacketPiece && jacket === "behind" ? Math.round(T * 0.08) : 0), w: size.w, h: size.h };
+    }
+
+    let jacketBoxes = [];
+    let jacketHemY = null;
+    if (jacketPiece) {
+      const hem = lengthOf(jacketPiece, "jacket", 1.3);
+      const style = innerPiece ? (jacket || "open") : "front";
+      if (style === "open" && innerPiece && jacketPiece.openBuffer) {
+        const size = sizeTo(jacketPiece, 0, hem, 480, jacketPiece.openRatio);
+        jacketBoxes = [{ left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h, buffer: jacketPiece.openBuffer }];
+        jacketHemY = shoulderY + size.h;
+      } else if (style === "open" && innerPiece) {
+        const halves = await splitDownTheMiddle(jacketPiece.buffer);
+        const size = sizeTo(jacketPiece, 0, hem, 440, halves.ratio);
+        const halfW = Math.round(size.w / 2);
+        const gap = Math.round((innerBox?.w || 300) * 0.42);
+        jacketBoxes = [
+          { left: centerX - gap / 2 - halfW, top: shoulderY, w: halfW, h: size.h, buffer: halves.left, fit: "fill" },
+          { left: centerX + gap / 2, top: shoulderY, w: halfW, h: size.h, buffer: halves.right, fit: "fill" },
+        ];
+        jacketHemY = shoulderY + size.h;
+      } else {
+        const size = sizeTo(jacketPiece, 0, hem, 440);
+        const top = shoulderY + (style === "front" && innerPiece ? Math.round(T * 0.1) : 0);
+        jacketBoxes = [{ left: centerX - size.w / 2, top, w: size.w, h: size.h }];
+        jacketHemY = top + size.h;
+      }
+    }
+
+    let bottomBox = null;
+    if (bottomPiece) {
+      const end = lengthOf(bottomPiece, "bottom", isSkirt ? 2.25 : ANKLE);
+      const size = sizeTo(bottomPiece, 1, end, 380);
+      const top = innerPiece || jacketPiece ? waistY : shoulderY;
+      bottomBox = { left: centerX - size.w / 2, top, w: size.w, h: size.h, end };
+    }
+
+    // Shoes sit at the ankle under long trousers or a long dress; otherwise a little below the hem
+    const shoeBoxes = [];
+    if (shoes.length) {
+      const lowest = Math.max(
+        bottomBox ? bottomBox.top + bottomBox.h : 0,
+        innerBox ? innerBox.top + innerBox.h : 0,
+        jacketHemY || 0,
+      );
+      const pair = shoes.slice(0, 2);
+      const w = pair.length === 2 ? 270 : 320;
+      const shoeH = Math.min(220, Math.round(w * pair[0].ratio));
+      // Over the shoe: the hem covers the top third of the shoe. To the ankle: they
+      // just meet. Shorter: a small gap.
+      const end = bottomBox ? bottomBox.end : innerBox && isDressInner ? lengthOf(innerPiece, "dress", 2.3) : 0;
+      const shoeTop = end >= 3.1 ? lowest - Math.round(shoeH * 0.35)
+        : end >= 2.9 ? lowest - 6
+        : lowest + 26;
+      const gapX = 24;
+      const totalW = pair.length * w + (pair.length - 1) * gapX;
+      pair.forEach((shoe, i) => {
+        const h = Math.min(220, Math.round(w * shoe.ratio));
+        shoeBoxes.push({ piece: shoe, left: centerX - totalW / 2 + i * (w + gapX), top: shoeTop, w, h });
+      });
+      shoes.slice(2).forEach((shoe, i) => {
+        const h = Math.min(200, Math.round(260 * shoe.ratio));
+        shoeBoxes.push({ piece: shoe, left: centerX - 130, top: shoeTop + 230 + i * 220, w: 260, h });
+      });
+    }
+
+    const beltBoxes = belts.map((belt, i) => {
+      const w = 380;
+      const h = Math.min(110, Math.round(w * belt.ratio));
+      return { piece: belt, left: centerX - w / 2, top: waistY - Math.round(h / 2) + i * (h + 8), w, h };
+    });
+
+    // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
+    const tucked = topStyle === "tucked" && innerPiece && !isDressInner && bottomPiece;
+    const jacketStyle = jacketPiece && innerPiece ? (jacket || "open") : "front";
+    for (const box of shoeBoxes) draw.push([box.piece, box]);
+    if (jacketPiece && jacketStyle === "behind") for (const box of jacketBoxes) draw.push([jacketPiece, box]);
+    const middle = [];
+    if (innerBox) middle.push([innerPiece, innerBox]);
+    if (bottomBox) {
+      if (tucked) middle.push([bottomPiece, bottomBox]);
+      else middle.unshift([bottomPiece, bottomBox]);
+    }
+    draw.push(...middle);
+    for (const box of beltBoxes) draw.push([box.piece, box]);
+    if (jacketPiece && jacketStyle !== "behind") for (const box of jacketBoxes) draw.push([jacketPiece, box]);
+
+    for (const [piece, box] of draw) {
+      await placeItem(piece, { targetW: box.w, targetH: box.h, left: box.left, top: box.top, blur: 7, opacity: 0.24, buffer: box.buffer, fit: box.fit || "contain" });
+    }
+    const bottomEdge = Math.max(...draw.map(([, box]) => box.top + box.h));
+    currentY = bottomEdge + 25;
+  } else {
   // 2. Tops / Outerwear / Dresses
   const allUpper = [...outerwear, ...tops, ...dresses];
   const upperTopY = currentY;
@@ -1008,6 +1160,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       }
       currentY += rowH + 20;
     }
+  }
+
   }
 
   // 6. Left side accessories (Bags, backpacks, luggage)
@@ -2155,6 +2309,7 @@ Respond in strict JSON format:
       secondaryColor: metadata.secondaryColor || null,
       palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
       tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+      fit: normalizeFit(metadata.fit),
       image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
       modeledImage: modeledImage || existing?.modeledImage || null,
@@ -2561,6 +2716,7 @@ Respond in strict JSON format:
         records[index] = {
           ...records[index],
           ...input,
+          ...(input.fit !== undefined ? { fit: normalizeFit(input.fit) } : {}),
           id,
           updatedAt: new Date().toISOString(),
         };

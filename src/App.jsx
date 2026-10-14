@@ -7,6 +7,8 @@ import { ImageLightbox } from "./ImageLightbox.jsx";
 import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
 import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilters.jsx";
 import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
+import { FitPicker } from "./FitPicker.jsx";
+import { fitForPart } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
 // Page heading whose words fade in from a soft blur
@@ -364,6 +366,8 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
         </select>
       </label>
 
+      <FitPicker part={draft.part} fit={draft.fit} onChange={(fit) => setDraft((current) => ({ ...current, fit }))} />
+
       <label className="field">
         <span>מותג</span>
         <input
@@ -419,7 +423,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+  const [draft, setDraft] = useState({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], fit: fitForPart(item.fit, item.part) });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [generatingModeled, setGeneratingModeled] = useState(false);
@@ -536,6 +540,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
       color: draft.color?.toLowerCase() || null,
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
+      fit: fitForPart(draft.fit, draft.part).length || null,
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       brand: (item.brand || "").trim(),
@@ -543,6 +548,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
       color: item.color?.toLowerCase() || null,
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
+      fit: fitForPart(item.fit, item.part).length || null,
     });
   }, [draft, item]);
 
@@ -587,20 +593,20 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     setSampling(null);
     setSampleStatus("");
     setPalette(item.palette || []);
-    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], fit: fitForPart(item.fit, item.part) });
     setActivePhotoTab("flat");
     setModeledError("");
   }, [item]);
 
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", brand: item.brand || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], fit: fitForPart(item.fit, item.part) });
     setSampling(null);
     setSampleStatus("");
     onClose();
   };
 
   const saveEditing = () => {
-    onSave({ ...item, ...draft, name: draft.name.trim(), brand: (draft.brand || "").trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+    onSave({ ...item, ...draft, fit: fitForPart(draft.fit, draft.part), name: draft.name.trim(), brand: (draft.brand || "").trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
     setSampling(null);
     setSampleStatus("השינויים נשמרו.");
   };
