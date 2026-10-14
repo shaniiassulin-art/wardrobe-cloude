@@ -830,19 +830,31 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   );
 }
 
-function LookViewerModal({ look, onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
+// Full-size photo of a garment in a look, from the wardrobe when it is still there
+const lookPieceImage = (garment, items = []) => {
+  const item = items.find((entry) => entry.id === garment.id);
+  return item?.image || garment.thumbnail;
+};
+const lookImages = (look, items = []) => [
+  { src: thumbUrl(look.image, 1080), alt: look.name },
+  ...(look.garments || []).map((garment) => ({ src: thumbUrl(lookPieceImage(garment, items), 1080), alt: garment.name })),
+];
+
+function LookViewerModal({ look, items = [], onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
   const [deleting, setDeleting] = useState(false);
+  const [zoomIndex, setZoomIndex] = useState(null);
 
   const handleDelete = async () => {
+    if (!window.confirm(`למחוק את הלוק "${look.name}"?`)) return;
     setDeleting(true);
     await onDelete(look.id);
     onClose();
   };
 
   return (
-    <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="builder-modal" style={{ maxWidth: "580px", padding: "26px" }}>
-        <header className="builder-header" style={{ marginBottom: "18px" }}>
+    <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && zoomIndex === null && onClose()}>
+      <div className="builder-modal look-viewer">
+        <header className="builder-header" style={{ marginBottom: "14px" }}>
           <div>
             <span style={{ fontSize: "11px", letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)", fontWeight: "600" }}>לוק שמור</span>
             <h2 style={{ margin: "4px 0 0", fontSize: "20px" }}>{look.name}</h2>
@@ -852,15 +864,13 @@ function LookViewerModal({ look, onClose, onDelete, onPack, onCreateOnMe, suitca
           </button>
         </header>
 
-        <div style={{ width: "100%", maxHeight: "72vh", overflowY: "auto", borderRadius: "4px", marginBottom: "16px", border: "1px solid var(--line)", background: "#f8f6f2", display: "flex", alignItems: "center", justifyContent: "center", padding: "8px" }}>
-          <img src={thumbUrl(look.image, 1080)} onError={imageFallback(look.image)} alt={look.name} style={{ maxWidth: "100%", height: "auto", maxHeight: "68vh", objectFit: "contain", borderRadius: "2px" }} />
-        </div>
+        <button type="button" className="look-viewer__photo" onClick={() => setZoomIndex(0)} aria-label="הגדלת תמונת הלוק">
+          <img src={thumbUrl(look.image, 1080)} onError={imageFallback(look.image)} alt={look.name} />
+        </button>
 
         {look.notes && (
-          <div style={{ marginBottom: "16px", padding: "10px 14px", background: "rgba(25, 24, 22, 0.03)", border: "1px dashed var(--line)", borderRadius: "4px" }}>
-            <span style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "var(--muted)", marginBottom: "4px" }}>
-              הערות סטיילינג
-            </span>
+          <div style={{ marginBottom: "16px", padding: "10px 14px", background: "rgba(25, 24, 22, 0.03)", border: "1px dashed var(--line)", borderRadius: "12px" }}>
+            <span className="look-viewer__label" style={{ marginBottom: "4px" }}>הערות סטיילינג</span>
             <p style={{ margin: 0, fontSize: "13px", fontStyle: "italic", color: "var(--ink)" }}>"{look.notes}"</p>
           </div>
         )}
@@ -878,38 +888,40 @@ function LookViewerModal({ look, onClose, onDelete, onPack, onCreateOnMe, suitca
         )}
 
         {!!look.garments?.length && (
-          <div style={{ marginBottom: "16px" }}>
-            <span style={{ display: "block", fontSize: "11px", fontWeight: "600", color: "var(--muted)", marginBottom: "8px" }}>פריטים בלוק</span>
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              {look.garments.map((g) => (
-                <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid var(--line)", padding: "4px 8px", borderRadius: "3px", fontSize: "12px" }}>
-                  <img src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" alt="" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
-                  <span>{g.name}</span>
-                </div>
+          <>
+            <span className="look-viewer__label">פריטים בלוק</span>
+            <div className="look-viewer__pieces">
+              {look.garments.map((g, index) => (
+                <button key={g.id} type="button" className="look-piece" onClick={() => setZoomIndex(index + 1)} aria-label={`הגדלת ${g.name}`}>
+                  <span className="look-piece__img">
+                    <img src={thumbUrl(fittedImage(g.thumbnail), 240)} onError={imageFallback(g.thumbnail)} loading="lazy" alt="" />
+                  </span>
+                  <span className="look-piece__name">{g.name}</span>
+                </button>
               ))}
             </div>
-          </div>
+          </>
         )}
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "16px", marginTop: "16px" }}>
-          <button className="delete-button" type="button" disabled={deleting} onClick={handleDelete}>
-            <Trash size={15} /> מחיקת לוק
+        <div className="look-viewer__footer">
+          <button className="lv-btn is-danger" type="button" disabled={deleting} onClick={handleDelete} aria-label="מחיקת הלוק">
+            <Trash size={15} /> <span>מחיקה</span>
           </button>
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {onCreateOnMe && !!look.garmentIds?.length && (
-              <button className="secondary-button" type="button" onClick={() => onCreateOnMe(look)}>
-                <User size={15} /> {look.mode === "modeled" ? "ליצור שוב עליי" : "ליצור לוק עליי"}
-              </button>
-            )}
-            {onPack && (
-              <button className="secondary-button" type="button" onClick={onPack}>
-                <Suitcase size={15} weight={suitcaseCount ? "fill" : "regular"} /> {suitcaseCount ? `במזוודה (${suitcaseCount})` : "הוספה למזוודה"}
-              </button>
-            )}
-            <button className="primary-button" type="button" onClick={onClose}>סגור</button>
-          </div>
+          <span className="lv-spacer" />
+          {onCreateOnMe && !!look.garmentIds?.length && (
+            <button className="lv-btn" type="button" onClick={() => onCreateOnMe(look)} aria-label={look.mode === "modeled" ? "ליצור שוב עליי" : "ליצור לוק עליי"}>
+              <User size={15} /> <span>עליי</span>
+            </button>
+          )}
+          {onPack && (
+            <button className="lv-btn" type="button" onClick={onPack} aria-label={suitcaseCount ? `במזוודה (${suitcaseCount})` : "הוספה למזוודה"}>
+              <Suitcase size={15} weight={suitcaseCount ? "fill" : "regular"} /> <span>{suitcaseCount ? `במזוודה ${suitcaseCount}` : "מזוודה"}</span>
+            </button>
+          )}
+          <button className="lv-btn is-primary" type="button" onClick={onClose}>סגירה</button>
         </div>
       </div>
+      {zoomIndex !== null && <ImageLightbox images={lookImages(look, items)} startIndex={zoomIndex} onClose={() => setZoomIndex(null)} />}
     </div>
   );
 }
@@ -1758,6 +1770,8 @@ export function App() {
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
+  // Look photos opened full screen from the looks page: { look, index }
+  const [lookZoom, setLookZoom] = useState(null);
   const [packingLookId, setPackingLookId] = useState(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState("flatlay");
@@ -2471,8 +2485,16 @@ export function App() {
                       <h3 className="look-card__title">{look.name}</h3>
                       {!!look.garments?.length && (
                         <div className="look-card__garments">
-                          {look.garments.map((g) => (
-                            <img key={g.id} className="look-card__garment-thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
+                          {look.garments.map((g, index) => (
+                            <button
+                              key={g.id}
+                              type="button"
+                              className="look-card__garment-thumb-btn"
+                              aria-label={`הגדלת ${g.name}`}
+                              onClick={(event) => { event.stopPropagation(); setLookZoom({ look, index: index + 1 }); }}
+                            >
+                              <img className="look-card__garment-thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
+                            </button>
                           ))}
                         </div>
                       )}
@@ -2669,6 +2691,7 @@ export function App() {
       {selectedLook && (
         <LookViewerModal
           look={selectedLook}
+          items={items}
           onClose={() => setSelectedLook(null)}
           onDelete={deleteOutfit}
           suitcaseCount={suitcases.filter((s) => s.outfitIds?.includes(selectedLook.id)).length}
@@ -2680,6 +2703,8 @@ export function App() {
           }}
         />
       )}
+
+      {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
       <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || selectMode || Boolean(selectedItem) || builderOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
