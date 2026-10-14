@@ -557,7 +557,26 @@ export async function fitMultipleGarmentsOnModel(modelBuffer, garmentEntries = [
     .toBuffer();
 }
 
-export async function generateFlatLayOutfit(garmentEntries = []) {
+// Free styling choices for a flat lay, done by arranging the photos (no AI):
+//   jacket: "open"   - the jacket lies underneath and the top sits on it, like an open jacket
+//           "closed" - the jacket lies on top and covers the top, only the neckline peeks out
+//   top:    "out"    - the top lies over the waistband of the bottoms
+//           "tucked" - the bottoms lie over the hem of the top, like a tucked-in top
+export const FLATLAY_STYLING = {
+  jacket: ["open", "closed"],
+  top: ["out", "tucked"],
+};
+
+export function normalizeFlatlayStyling(input = {}) {
+  const styling = {};
+  for (const [key, allowed] of Object.entries(FLATLAY_STYLING)) {
+    if (allowed.includes(input?.[key])) styling[key] = input[key];
+  }
+  return styling;
+}
+
+export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
+  const { jacket, top: topStyle } = normalizeFlatlayStyling(styling);
   if (!garmentEntries.length) {
     throw new Error("No garments provided for flat lay");
   }
@@ -696,6 +715,17 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
 
   const composites = [];
   const placedBoxes = [];
+  const layersOf = new Map();
+  // Move the photos of these pieces to the top of the pile
+  const bringToFront = (pieces) => {
+    for (const piece of pieces) {
+      for (const layer of layersOf.get(piece) || []) {
+        const index = composites.indexOf(layer);
+        if (index >= 0) composites.splice(index, 1);
+        composites.push(layer);
+      }
+    }
+  };
 
   // Helper to place item with realistic drop shadow
   async function placeItem(item, { targetW, targetH, left, top, blur = 6, opacity = 0.22 }) {
@@ -721,8 +751,9 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
       .png()
       .toBuffer();
 
-    composites.push({ input: shadow, top: t + 4, left: l + 2 });
-    composites.push({ input: resized, top: t, left: l });
+    const layers = [{ input: shadow, top: t + 4, left: l + 2 }, { input: resized, top: t, left: l }];
+    composites.push(...layers);
+    layersOf.set(item, layers);
 
     placedBoxes.push({ left: l, top: t, width: w, height: h });
   }
@@ -748,6 +779,8 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
 
   // 2. Tops / Outerwear / Dresses
   const allUpper = [...outerwear, ...tops, ...dresses];
+  const upperTopY = currentY;
+  let upperBottom = null;
   if (allUpper.length === 1) {
     const item = allUpper[0];
     const isFullDress = dresses.includes(item);
@@ -762,7 +795,33 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
     const piece1 = allUpper[0];
     const piece2 = allUpper[1];
 
-    if (hasOuter) {
+    if (hasOuter && jacket) {
+      const outerPiece = outerwear[0];
+      const innerPiece = (allUpper[0] === outerPiece) ? allUpper[1] : allUpper[0];
+      if (jacket === "open") {
+        // Jacket underneath, top centred on it and a little lower so the collar shows
+        const outerW = 440;
+        const outerH = Math.min(600, Math.round(outerW * outerPiece.ratio));
+        const innerW = 300;
+        const innerH = Math.min(440, Math.round(innerW * innerPiece.ratio));
+        const innerTop = currentY + Math.round(outerH * 0.12);
+        await placeItem(outerPiece, { targetW: outerW, targetH: outerH, left: centerX - outerW / 2, top: currentY, blur: 8, opacity: 0.25 });
+        await placeItem(innerPiece, { targetW: innerW, targetH: innerH, left: centerX - innerW / 2, top: innerTop, blur: 6, opacity: 0.2 });
+        upperBottom = Math.max(currentY + outerH, innerTop + innerH);
+        currentY = upperBottom + 15;
+      } else {
+        // Top underneath and slightly higher, jacket on top of it
+        const innerW = 330;
+        const innerH = Math.min(480, Math.round(innerW * innerPiece.ratio));
+        const outerW = 420;
+        const outerH = Math.min(580, Math.round(outerW * outerPiece.ratio));
+        const outerTop = currentY + 34;
+        await placeItem(innerPiece, { targetW: innerW, targetH: innerH, left: centerX - innerW / 2, top: currentY, blur: 6, opacity: 0.2 });
+        await placeItem(outerPiece, { targetW: outerW, targetH: outerH, left: centerX - outerW / 2, top: outerTop, blur: 8, opacity: 0.25 });
+        upperBottom = Math.max(currentY + innerH, outerTop + outerH);
+        currentY = upperBottom + 15;
+      }
+    } else if (hasOuter) {
       const outerPiece = outerwear[0];
       const innerPiece = (allUpper[0] === outerPiece) ? allUpper[1] : allUpper[0];
 
@@ -807,6 +866,16 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
     }
   }
 
+  // Tucked or untucked: the bottoms overlap the hem of the top a little.
+  // Only when there is a separate top (not a dress) and bottoms to tuck into.
+  const canTuck = topStyle && bottoms.length > 0 && allUpper.length > 0 && !allUpper.every((e) => dresses.includes(e));
+  if (canTuck) {
+    const sectionBottom = upperBottom ?? (currentY - 15);
+    const upperHeight = Math.max(1, sectionBottom - upperTopY);
+    const overlap = Math.round(Math.min(140, upperHeight * (topStyle === "tucked" ? 0.2 : 0.12)));
+    currentY = sectionBottom - overlap;
+  }
+
   // 3. Belts
   if (belts.length > 0) {
     for (const belt of belts) {
@@ -847,6 +916,10 @@ export async function generateFlatLayOutfit(garmentEntries = []) {
       currentY += rowH + 20;
     }
   }
+
+  // Untucked: the top (and any jacket) lies over the waistband of the bottoms.
+  // Tucked: the bottoms cover the hem of the top, but a jacket still lies on top.
+  if (canTuck) bringToFront(topStyle === "out" ? allUpper : outerwear);
 
   // 5. Shoes
   if (shoes.length === 1) {
@@ -1141,6 +1214,30 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   }
 
   const libraryKey = (name) => `imported/${name}`;
+
+  // Resized WebP copies of stored images. The ?t= version is part of the key, so a
+  // replaced photo (which always gets a new ?t=) gets a fresh copy.
+  const VARIANT_WIDTHS = [160, 240, 320, 480, 640, 800, 1080];
+  function variantWidth(url) {
+    const requested = Number(url.searchParams.get("w"));
+    if (!Number.isFinite(requested) || requested <= 0) return null;
+    return VARIANT_WIDTHS.find((width) => width >= requested) || VARIANT_WIDTHS[VARIANT_WIDTHS.length - 1];
+  }
+  async function imageVariant(name, url, width, fit, loadSource) {
+    const version = (url.searchParams.get("t") || "0").replace(/[^\w-]/g, "").slice(0, 24) || "0";
+    const key = `variants/${name.replace(/\.png$/i, "")}-${fit ? "fit" : "full"}-w${width}-v${version}.webp`;
+    const cached = await store.getBytes(key).catch(() => null);
+    if (cached) return cached;
+    let source = await loadSource();
+    if (!source) return null;
+    if (fit) source = await fitGarmentToSquare(source);
+    const bytes = await sharp(source, { failOnError: false })
+      .resize({ width, height: width * 2, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80, alphaQuality: 90, effort: 4 })
+      .toBuffer();
+    await store.setBytes(key, bytes).catch(() => {});
+    return bytes;
+  }
   const outfitImageKey = (name) => `outfit-images/${name}`;
   const jobKey = (id, name = "job.json") => `jobs/${id}/${name}`;
 
@@ -1334,6 +1431,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   async function generateOutfitLook(input = {}) {
     const { name, garmentIds = [], occasion, settingDirection, notes, save = true, mode, noModel, wardrobeId = "user-shani" } = input;
     const isFlatlay = mode === "flatlay" || noModel === true;
+    const styling = isFlatlay ? normalizeFlatlayStyling(input.styling) : {};
 
     const records = await loadImported(wardrobeId);
     const selectedGarments = [];
@@ -1364,7 +1462,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     }));
 
     if (isFlatlay) {
-      bytes = await generateFlatLayOutfit(garmentEntries);
+      bytes = await generateFlatLayOutfit(garmentEntries, styling);
     } else {
       const key = setting("OPENAI_API_KEY");
       const modelData = await loadModelReference(wardrobeId);
@@ -1455,6 +1553,8 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
         thumbnail: g.thumbnail || g.image,
       })),
       notes: notes?.trim() || null,
+      mode: isFlatlay ? "flatlay" : "modeled",
+      styling: isFlatlay && Object.keys(styling).length ? styling : null,
       setting: backdrop,
       image: `/api/import/outfits/images/${filename}?t=${Date.now()}`,
       createdAt: new Date().toISOString(),
@@ -1481,6 +1581,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
 
     const outfitId = outfitData.id || `outfit-${randomUUID().slice(0, 8)}`;
     let outfitImage = outfitData.image;
+    const styling = outfitData.mode === "flatlay" ? normalizeFlatlayStyling(outfitData.styling) : {};
 
     if (!outfitImage || outfitData.mode === "flatlay" || outfitImage.startsWith("data:")) {
       try {
@@ -1490,7 +1591,7 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
           if (buffer) garmentEntries.push({ buffer, item: g });
         }
         if (garmentEntries.length) {
-          const bytes = await generateFlatLayOutfit(garmentEntries);
+          const bytes = await generateFlatLayOutfit(garmentEntries, styling);
           const filename = `${outfitId}.png`;
           await store.setBytes(outfitImageKey(filename), bytes);
           outfitImage = `/api/import/outfits/images/${filename}?t=${Date.now()}`;
@@ -1515,6 +1616,8 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
         thumbnail: g.thumbnail || g.image,
       })),
       notes: outfitData.notes || null,
+      mode: outfitData.mode === "flatlay" ? "flatlay" : outfitData.mode === "modeled" ? "modeled" : null,
+      styling: Object.keys(styling).length ? styling : null,
       setting: outfitData.setting || "Custom wardrobe outfit",
       image: outfitImage,
       createdAt: outfitData.createdAt || new Date().toISOString(),
@@ -2534,18 +2637,29 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
       }
       const outfitImageMatch = url.pathname.match(/^\/api\/import\/outfits\/images\/([\w.-]+)$/i);
       if (outfitImageMatch && request.method === "GET") {
-        const data = await store.getBytes(outfitImageKey(path.basename(outfitImageMatch[1])));
+        const name = path.basename(outfitImageMatch[1]);
+        const width = variantWidth(url);
+        if (width) {
+          const variant = await imageVariant(`outfit-${name}`, url, width, false, () => store.getBytes(outfitImageKey(name)));
+          if (variant) return imageResponse(variant, { contentType: "image/webp" });
+        }
+        const data = await store.getBytes(outfitImageKey(name));
         if (!data) return json(404, { error: "Outfit image not found" });
         return imageResponse(data);
       }
       const libraryAssetMatch = url.pathname.match(/^\/api\/import\/library\/([\w.-]+)$/i);
       if (libraryAssetMatch && request.method === "GET") {
         const name = path.basename(libraryAssetMatch[1]);
-        const bytes = await requireBytes(libraryKey(name));
         // ?fit=1 serves the garment cropped and centred for an even wardrobe grid
-        if (url.searchParams.get("fit") === "1" && name.endsWith("-garment.png")) {
-          return imageResponse(await fitGarmentToSquare(bytes));
+        const fit = url.searchParams.get("fit") === "1" && name.endsWith("-garment.png");
+        const width = variantWidth(url);
+        if (width) {
+          // Small WebP copies for the grid; made once and kept, so later visits are fast
+          const variant = await imageVariant(name, url, width, fit, () => store.getBytes(libraryKey(name)));
+          if (variant) return imageResponse(variant, { contentType: "image/webp" });
         }
+        const bytes = await requireBytes(libraryKey(name));
+        if (fit) return imageResponse(await fitGarmentToSquare(bytes));
         return imageResponse(bytes);
       }
       const assetMatch = url.pathname.match(/^\/api\/import\/assets\/([a-f0-9-]{36})\/([\w.-]+)$/i);

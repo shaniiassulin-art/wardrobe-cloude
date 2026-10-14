@@ -25,3 +25,20 @@ export function fittedImage(url) {
   if (typeof url !== "string" || !url.startsWith("/api/import/library/") || !url.split("?")[0].endsWith("-garment.png")) return url;
   return `${url}${url.includes("?") ? "&" : "?"}fit=1`;
 }
+
+// Small copy of a stored photo, `width` pixels wide (served as WebP by the server)
+export function thumbUrl(url, width = 320) {
+  if (typeof url !== "string") return url;
+  const path = url.split(/[?#]/, 1)[0];
+  if (!path.startsWith("/api/import/library/") && !path.startsWith("/api/import/outfits/images/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}w=${width}`;
+}
+
+// If a small copy cannot load, show the original photo instead (once)
+export const imageFallback = (plain) => (event) => {
+  const image = event.currentTarget;
+  if (!plain || image.dataset.fellBack) return;
+  image.dataset.fellBack = "1";
+  image.removeAttribute("srcset");
+  image.src = plain;
+};

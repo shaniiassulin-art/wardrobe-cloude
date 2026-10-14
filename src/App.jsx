@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
-import { fittedImage, toBrowserImage } from "./image-files.js";
+import { fittedImage, imageFallback, thumbUrl, toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
 import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilters.jsx";
+import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
 // Page heading whose words fade in from a soft blur
@@ -222,12 +223,12 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
         <OptimizedImage
           src={fittedImage(item.thumbnail || item.image)}
           // If the cropped version cannot load, fall back to the regular photo
-          onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }}
+          onError={imageFallback(item.thumbnail || item.image)}
           alt=""
           sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px"
           breakpoints={[160, 240, 320, 480, 640]}
         />
-        {hasModeled && <img className="gallery-item__modeled" src={item.modeledImage} alt="" loading="lazy" />}
+        {hasModeled && <img className="gallery-item__modeled" src={thumbUrl(item.modeledImage, 480)} onError={imageFallback(item.modeledImage)} alt="" loading="lazy" decoding="async" />}
         {selectMode && <span className="gallery-item__check" aria-hidden="true">{checked && <Check size={16} weight="bold" />}</span>}
         {qualityLabel(item.catalogQuality) && !selectMode && <span className="gallery-item__quality">{qualityLabel(item.catalogQuality)}</span>}
       </button>
@@ -644,7 +645,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
         )}
         {hasModeledImage && activePhotoTab === "modeled" ? (
           <button type="button" className="item-sheet__modeled" onClick={() => setZoomSrc(item.modeledImage)} aria-label="הגדלת התמונה">
-            <img src={item.modeledImage} alt={`${draft.name || type} עליי`} />
+            <img src={thumbUrl(item.modeledImage, 1080)} onError={imageFallback(item.modeledImage)} alt={`${draft.name || type} עליי`} />
           </button>
         ) : (
           garmentArtwork
@@ -680,10 +681,11 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
           <div className="item-sheet__redo-actions">
             <button type="button" className="primary-button" onClick={handleGenerateModeled} disabled={generatingModeled}>
               {generatingModeled ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <User size={15} aria-hidden="true" />}
-              <span>{generatingModeled ? "יוצר..." : hasModeledImage ? "יצירה מחדש עליי" : "יצירה עליי"}</span>
+              <span>{generatingModeled ? "יוצר..." : `${hasModeledImage ? "יצירה מחדש עליי" : "יצירה עליי"} (${PRICES.modeledItem})`}</span>
             </button>
             <button type="button" className="secondary-button" onClick={() => setModeledPanelOpen(false)} disabled={generatingModeled}>ביטול</button>
           </div>
+          <p className="item-sheet__note">התמונה נשמרת אוטומטית לפריט{hasModeledImage ? " ומחליפה את התמונה הקודמת עלייך" : ""}. החיוב הוא על היצירה עצמה.</p>
         </div>
       )}
       {modeledError && <p className="item-sheet__error" role="alert">{modeledError}</p>}
@@ -695,11 +697,11 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
             <p className="item-sheet__note">נוצרה גרסה חדשה. בחרי מה לעשות איתה:</p>
             <div className="item-versions__compare">
               <figure>
-                <button type="button" onClick={() => setZoomSrc(item.image)} aria-label="הגדלת התמונה הנוכחית"><img src={item.image} alt="" /></button>
+                <button type="button" onClick={() => setZoomSrc(item.image)} aria-label="הגדלת התמונה הנוכחית"><img src={thumbUrl(item.image, 480)} onError={imageFallback(item.image)} alt="" /></button>
                 <figcaption>הנוכחית{qualityLabel(item.catalogQuality) ? ` · ${qualityLabel(item.catalogQuality)}` : ""}</figcaption>
               </figure>
               <figure className="is-new">
-                <button type="button" onClick={() => setZoomSrc(item.pendingVersion.image)} aria-label="הגדלת הגרסה החדשה"><img src={item.pendingVersion.image} alt="" /></button>
+                <button type="button" onClick={() => setZoomSrc(item.pendingVersion.image)} aria-label="הגדלת הגרסה החדשה"><img src={thumbUrl(item.pendingVersion.image, 480)} onError={imageFallback(item.pendingVersion.image)} alt="" /></button>
                 <figcaption>החדשה · {qualityLabel(item.pendingVersion.quality)}</figcaption>
               </figure>
             </div>
@@ -719,7 +721,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
           <>
             <p className="item-sheet__note">{item.originalImage
               ? "תיווצר גרסה חדשה מהתמונה המקורית שהעלית. תוכלי להשוות ולבחור."
-              : "לפריט הזה לא נשמרה תמונה מקורית, אז הגרסה החדשה תיווצר מהתמונה שבארון. תוכלי להשוות ולבחור."}</p>
+              : "לפריט הזה לא נשמרה תמונה מקורית, אז הגרסה החדשה תיווצר מהתמונה שבארון. תוכלי להשוות ולבחור."} החיוב הוא על היצירה, גם אם תשאירי את הנוכחית.</p>
             <textarea
               className="item-sheet__textarea"
               rows={2}
@@ -731,11 +733,11 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
             <div className="item-sheet__redo-actions">
               <button type="button" className="secondary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("low")}>
                 {redoing === "low" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
-                <span>{redoing === "low" ? "מעבד..." : "עיבוד מחדש (כ-3 אג׳)"}</span>
+                <span>{redoing === "low" ? "מעבד..." : `עיבוד מחדש (${PRICES.catalogLow})`}</span>
               </button>
               <button type="button" className="primary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("medium")}>
                 {redoing === "medium" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
-                <span>{redoing === "medium" ? "מעבד..." : "איכות בינונית (כ-20 אג׳)"}</span>
+                <span>{redoing === "medium" ? "מעבד..." : `איכות בינונית (${PRICES.catalogMedium})`}</span>
               </button>
             </div>
           </>
@@ -774,7 +776,7 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
   );
 }
 
-function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 }) {
+function LookViewerModal({ look, onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
@@ -797,7 +799,7 @@ function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 })
         </header>
 
         <div style={{ width: "100%", maxHeight: "72vh", overflowY: "auto", borderRadius: "4px", marginBottom: "16px", border: "1px solid var(--line)", background: "#f8f6f2", display: "flex", alignItems: "center", justifyContent: "center", padding: "8px" }}>
-          <img src={look.image} alt={look.name} style={{ maxWidth: "100%", height: "auto", maxHeight: "68vh", objectFit: "contain", borderRadius: "2px" }} />
+          <img src={thumbUrl(look.image, 1080)} onError={imageFallback(look.image)} alt={look.name} style={{ maxWidth: "100%", height: "auto", maxHeight: "68vh", objectFit: "contain", borderRadius: "2px" }} />
         </div>
 
         {look.notes && (
@@ -809,7 +811,13 @@ function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 })
           </div>
         )}
 
-        {look.setting && (
+        {stylingSummary(look.styling) && (
+          <div style={{ marginBottom: "14px", fontSize: "12px", color: "var(--muted)" }}>
+            <span style={{ fontWeight: "600", color: "var(--ink)" }}>סידור:</span> {stylingSummary(look.styling)}
+          </div>
+        )}
+
+        {look.setting && look.mode !== "flatlay" && (
           <div style={{ marginBottom: "14px", fontSize: "12px", color: "var(--muted)" }}>
             <span style={{ fontWeight: "600", color: "var(--ink)" }}>רקע:</span> {look.setting}
           </div>
@@ -821,7 +829,7 @@ function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 })
             <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
               {look.garments.map((g) => (
                 <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "6px", border: "1px solid var(--line)", padding: "4px 8px", borderRadius: "3px", fontSize: "12px" }}>
-                  <img src={g.thumbnail} alt="" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
+                  <img src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" alt="" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
                   <span>{g.name}</span>
                 </div>
               ))}
@@ -834,6 +842,11 @@ function LookViewerModal({ look, onClose, onDelete, onPack, suitcaseCount = 0 })
             <Trash size={15} /> מחיקת לוק
           </button>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {onCreateOnMe && !!look.garmentIds?.length && (
+              <button className="secondary-button" type="button" onClick={() => onCreateOnMe(look)}>
+                <User size={15} /> {look.mode === "modeled" ? "ליצור שוב עליי" : "ליצור לוק עליי"}
+              </button>
+            )}
             {onPack && (
               <button className="secondary-button" type="button" onClick={onPack}>
                 <Suitcase size={15} weight={suitcaseCount ? "fill" : "regular"} /> {suitcaseCount ? `במזוודה (${suitcaseCount})` : "הוספה למזוודה"}
@@ -1097,7 +1110,7 @@ function SuitcaseFlatlayModal({ data, onClose, onSaveAsOutfit }) {
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {data.items?.map((item) => (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: "5px", background: "var(--paper)", border: "1px solid var(--line)", padding: "3px 8px", borderRadius: "3px", fontSize: "12px" }}>
-                <img src={item.thumbnail || item.image} alt="" style={{ width: "20px", height: "20px", objectFit: "contain" }} />
+                <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt="" style={{ width: "20px", height: "20px", objectFit: "contain" }} />
                 <span>{item.name}</span>
               </div>
             ))}
@@ -1118,10 +1131,37 @@ function SuitcaseFlatlayModal({ data, onClose, onSaveAsOutfit }) {
   );
 }
 
-function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay", onClose, onCreated }) {
+const OUTER_PARTS = ["wholebody_up", "outerwear", "jacket"];
+const TOP_PARTS = ["upperbody", "top"];
+const BOTTOM_PARTS = ["lowerbody", "bottom"];
+const DEFAULT_FLATLAY_STYLING = { jacket: "open", top: "out" };
+const STYLING_LABELS = {
+  jacket: { open: "ז'קט פתוח", closed: "ז'קט סגור" },
+  top: { out: "חולצה בחוץ", tucked: "חולצה בתוך המכנסיים" },
+};
+const stylingSummary = (styling) => Object.entries(styling || {}).map(([key, value]) => STYLING_LABELS[key]?.[value]).filter(Boolean).join(" · ");
+
+// Two-option switch used for the free flat-lay styling choices
+function StylingChoice({ label, value, options, onChange, disabled }) {
+  return (
+    <div className="styling-choice">
+      <span className="styling-choice__label">{label}</span>
+      <div className="styling-choice__options" role="radiogroup" aria-label={label}>
+        {options.map((option) => (
+          <button key={option.id} type="button" role="radio" aria-checked={value === option.id} className={value === option.id ? "is-on" : ""} disabled={disabled} onClick={() => onChange(option.id)}>
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
-  const [outfitNotes, setOutfitNotes] = useState("");
+  const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
+  const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling || {}) }));
   const [lookName, setLookName] = useState("");
   const [activeFilterTab, setActiveFilterTab] = useState("all");
   const [generating, setGenerating] = useState(false);
@@ -1139,6 +1179,23 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
     return selectedIds.map((id) => items.find((i) => i.id === id)).filter(Boolean);
   }, [selectedIds, items]);
 
+  const hasOuter = selectedItems.some((item) => OUTER_PARTS.includes(item.part));
+  const hasInnerTop = selectedItems.some((item) => TOP_PARTS.includes(item.part) || item.part === "dress" || item.part === "wholebody");
+  const hasTop = selectedItems.some((item) => TOP_PARTS.includes(item.part));
+  const hasBottom = selectedItems.some((item) => BOTTOM_PARTS.includes(item.part));
+  // Only the choices that apply to the pieces picked right now are sent
+  const activeStyling = useMemo(() => {
+    const next = {};
+    if (hasOuter && hasInnerTop) next.jacket = styling.jacket;
+    if ((hasTop || hasOuter) && hasBottom) next.top = styling.top;
+    return next;
+  }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom]);
+
+  // A look made on the model has already been paid for, so losing it unsaved wastes money
+  const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !saving;
+  const confirmDiscardPaid = (action = "לסגור") => !paidUnsaved || window.confirm(`הלוק עלייך כבר נוצר והיצירה עלתה ${lookOnModelPrice(selectedIds.length)}. אם ${action} בלי לשמור, הלוק יאבד והכסף לא יחזור. להמשיך בלי לשמור?`);
+  const requestClose = () => { if (confirmDiscardPaid("תסגרי")) onClose(); };
+
   const toggleItem = (id) => {
     setSelectedIds((prev) => {
       if (prev.includes(id)) {
@@ -1155,6 +1212,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
   };
 
   const clearAll = () => {
+    if (!confirmDiscardPaid("תנקי")) return;
     setSelectedIds([]);
     setGeneratedLook(null);
     setBuilderError("");
@@ -1201,11 +1259,12 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
     });
   }, [items, activeFilterTab]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (stylingOverride) => {
     if (!selectedIds.length) {
       setBuilderError("אנא בחרו לפחות פריט אחד.");
       return;
     }
+    if (outfitMode === "modeled" && generatedLook && !confirmDiscardPaid("תיצרי מחדש")) return;
     setGenerating(true);
     setBuilderError("");
     try {
@@ -1218,13 +1277,14 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
           notes: outfitNotes.trim() || undefined,
           mode: outfitMode,
           noModel: outfitMode === "flatlay",
+          styling: outfitMode === "flatlay" ? (stylingOverride || activeStyling) : undefined,
           settingDirection: "a warm, natural daylight setting with minimalist architecture",
           save: false,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "שגיאה ביצירת לוק");
-      setGeneratedLook(data);
+      setGeneratedLook({ ...data, mode: data.mode || outfitMode });
       if (!lookName.trim() && data.name) {
         setLookName(data.name);
       }
@@ -1249,12 +1309,14 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
             name: lookName.trim() || generatedLook.name,
             notes: outfitNotes.trim() || generatedLook.notes,
             mode: outfitMode,
+            styling: outfitMode === "flatlay" ? activeStyling : undefined,
           }
         : {
             name: lookName.trim() || selectedItems.map((i) => i.name).join(" + "),
             garmentIds: selectedIds,
             notes: outfitNotes.trim() || undefined,
             mode: outfitMode,
+            styling: outfitMode === "flatlay" ? activeStyling : undefined,
             setting: "a warm, natural daylight setting with minimalist architecture",
             image: selectedItems[0]?.thumbnail || selectedItems[0]?.image || "",
           };
@@ -1286,16 +1348,16 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
   ];
 
   return (
-    <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
       <div className="builder-modal custom-outfit-modal">
         <header className="builder-header">
           <div>
             <h2>יצירת לוק אישי</h2>
             <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--muted)" }}>
-              {outfitMode === "flatlay" ? "פריסה אנכית ללא מודל: חולצה, מתחת מכנסיים, ומתחת נעליים" : "הדמיית הלוק כפי שנלבש על גבי המודל"}
+              {outfitMode === "flatlay" ? "פריסה אנכית ללא מודל: חולצה, מתחת מכנסיים, ומתחת נעליים · חינם" : `הדמיית הלוק עלייך עם AI · ${lookOnModelPrice(selectedIds.length)}`}
             </p>
           </div>
-          <button className="import-icon-button" type="button" onClick={onClose} aria-label="סגור">
+          <button className="import-icon-button" type="button" onClick={requestClose} aria-label="סגור">
             <X size={20} />
           </button>
         </header>
@@ -1306,23 +1368,25 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
             type="button"
             className={`outfit-mode-tab${outfitMode === "flatlay" ? " active" : ""}`}
             onClick={() => {
+              if (outfitMode === "flatlay" || !confirmDiscardPaid("תעברי לפריסה")) return;
               setOutfitMode("flatlay");
               setGeneratedLook(null);
             }}
           >
             <strong>לוק ללא מודל (פריסה שטוחה)</strong>
-            <span>חולצה ומתחת מכנסיים ומתחת נעליים – כמו על גוף אבל בלי אדם</span>
+            <span>חולצה ומתחת מכנסיים ומתחת נעליים – כמו על גוף אבל בלי אדם · חינם</span>
           </button>
           <button
             type="button"
             className={`outfit-mode-tab${outfitMode === "modeled" ? " active" : ""}`}
             onClick={() => {
+              if (outfitMode === "modeled") return;
               setOutfitMode("modeled");
               setGeneratedLook(null);
             }}
           >
             <strong>לוק על מודל</strong>
-            <span>הדמיה מעוצבת של הפריטים על גבי המודל</span>
+            <span>הדמיה של הפריטים עלייך עם AI · {lookOnModelPrice(selectedIds.length)}</span>
           </button>
         </div>
 
@@ -1351,7 +1415,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
                 }}
               >
                 {completingAI ? <ArrowClockwise size={13} className="spin" /> : <MagicWand size={13} />}
-                <span>{completingAI ? "משלים..." : "השלם עם AI"}</span>
+                <span>{completingAI ? "משלים..." : `השלם עם AI (${PRICES.textAI})`}</span>
               </button>
 
               {selectedItems.length > 0 && (
@@ -1376,7 +1440,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
             <div className="selected-pieces-tray">
               {selectedItems.map((item) => (
                 <div key={item.id} className="selected-piece-badge">
-                  <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt={item.name} />
+                  <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt={item.name} loading="lazy" decoding="async" />
                   <div>
                     <strong style={{ display: "block", fontSize: "12px", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.name}
@@ -1392,15 +1456,43 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
           )}
         </section>
 
+        {/* FREE FLAT-LAY STYLING */}
+        {outfitMode === "flatlay" && (hasOuter && hasInnerTop || (hasTop || hasOuter) && hasBottom) && (
+          <section className="styling-panel" aria-label="סידור הפריסה">
+            <p className="styling-panel__title">איך לסדר את הפריסה <span>חינם, בלי AI</span></p>
+            {hasOuter && hasInnerTop && (
+              <StylingChoice
+                label="ז'קט"
+                value={styling.jacket}
+                disabled={generating}
+                options={[{ id: "open", label: "פתוח" }, { id: "closed", label: "סגור" }]}
+                onChange={(jacket) => { const next = { ...styling, jacket }; setStyling(next); if (generatedLook) handleGenerate({ ...activeStyling, jacket }); }}
+              />
+            )}
+            {(hasTop || hasOuter) && hasBottom && (
+              <StylingChoice
+                label="חולצה"
+                value={styling.top}
+                disabled={generating}
+                options={[{ id: "out", label: "בחוץ" }, { id: "tucked", label: "בתוך המכנסיים" }]}
+                onChange={(top) => { const next = { ...styling, top }; setStyling(next); if (generatedLook) handleGenerate({ ...activeStyling, top }); }}
+              />
+            )}
+          </section>
+        )}
+
         {/* OUTFIT NOTES */}
         <section style={{ marginBottom: "16px" }}>
           <label style={{ display: "block", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink)", marginBottom: "6px" }}>
-            הערה ל-AI (אופציונלי)
+            {outfitMode === "flatlay" ? "הערות ללוק (אופציונלי)" : "הערה ל-AI (אופציונלי)"}
           </label>
+          {outfitMode === "flatlay" && (
+            <p style={{ margin: "0 0 6px", fontSize: "11px", color: "var(--muted)" }}>ההערות נשמרות עם הלוק. אם תיצרי ממנו לוק עלייך, הן יעברו ל-AI.</p>
+          )}
           <textarea
             value={outfitNotes}
             onChange={(e) => setOutfitNotes(e.target.value)}
-            placeholder={`${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
+            placeholder={outfitMode === "flatlay" ? "למשל: עם הז'קט פתוח, להכניס את החולצה למכנסיים" : `${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
             rows={2}
             style={{ width: "100%", padding: "8px 10px", fontSize: "13px", border: "1px solid var(--line)", borderRadius: "3px", background: "transparent", color: "var(--ink)", resize: "vertical", fontFamily: "inherit" }}
           />
@@ -1410,7 +1502,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
         {generatedLook && (
           <div className="generated-look-card">
             <div className="generated-look-photo-wrap">
-              <img className="generated-look-photo" src={generatedLook.image} alt={generatedLook.name} />
+              <img className="generated-look-photo" src={thumbUrl(generatedLook.image, 1080)} onError={imageFallback(generatedLook.image)} alt={generatedLook.name} />
             </div>
             <div className="generated-look-info">
               <div>
@@ -1430,7 +1522,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
                   <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                     {selectedItems.map((g) => (
                       <div key={g.id} style={{ display: "flex", alignItems: "center", gap: "5px", background: "var(--paper)", border: "1px solid var(--line)", padding: "3px 6px", borderRadius: "3px", fontSize: "11px" }}>
-                        <img src={g.thumbnail || g.image} alt="" style={{ width: "18px", height: "18px", objectFit: "contain" }} />
+                        <img src={thumbUrl(fittedImage(g.thumbnail || g.image), 160)} onError={imageFallback(g.thumbnail || g.image)} alt="" style={{ width: "18px", height: "18px", objectFit: "contain" }} />
                         <span>{g.name}</span>
                       </div>
                     ))}
@@ -1493,7 +1585,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
                     <span style={{ position: "absolute", top: "5px", right: "5px", fontSize: "10px", background: "rgba(25, 24, 22, 0.05)", padding: "1px 5px", borderRadius: "2px", color: "var(--muted)" }}>
                       {TYPE_MAP[item.part]?.singular || item.part}
                     </span>
-                    <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt={item.name} style={{ width: "56px", height: "56px", objectFit: "contain", marginTop: "14px", marginBottom: "4px" }} />
+                    <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt={item.name} style={{ width: "56px", height: "56px", objectFit: "contain", marginTop: "14px", marginBottom: "4px" }} />
                     <span style={{ fontSize: "11px", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: "1.2", padding: "0 2px" }}>
                       {item.name}
                     </span>
@@ -1520,10 +1612,11 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
         </div>
 
         {builderError && <p style={{ color: "var(--accent)", fontSize: "13px", margin: "10px 0 0" }}>{builderError}</p>}
+        {paidUnsaved && <p className="paid-unsaved-note" role="status">הלוק עלייך כבר שולם. שמרי אותו כדי לא לאבד אותו.</p>}
 
         {/* ACTIONS - SINGLE OCCURRENCE, NO STARS */}
         <div className="builder-actions" style={{ marginTop: "18px" }}>
-          <button className="secondary-button" type="button" disabled={generating || saving} onClick={onClose}>
+          <button className="secondary-button" type="button" disabled={generating || saving} onClick={requestClose}>
             ביטול
           </button>
           {!generatedLook ? (
@@ -1531,11 +1624,11 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
               className="primary-button"
               type="button"
               disabled={!selectedIds.length || generating}
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
             >
               {generating && <ArrowClockwise size={16} className="spin" />}
-              <span>{generating ? "יוצר לוק..." : outfitMode === "flatlay" ? "צור פריסת לוק (ללא מודל)" : "צור לוק על מודל"}</span>
+              <span>{generating ? "יוצר לוק..." : outfitMode === "flatlay" ? "צור פריסת לוק (חינם)" : `צור לוק עליי (${lookOnModelPrice(selectedIds.length)})`}</span>
             </button>
           ) : (
             <>
@@ -1543,11 +1636,11 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
                 className="secondary-button"
                 type="button"
                 disabled={generating || saving}
-                onClick={handleGenerate}
+                onClick={() => handleGenerate()}
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
               >
                 {generating && <ArrowClockwise size={16} className="spin" />}
-                <span>{generating ? "יוצר..." : "צור מחדש"}</span>
+                <span>{generating ? "יוצר..." : outfitMode === "flatlay" ? "צור מחדש (חינם)" : `צור מחדש (${lookOnModelPrice(selectedIds.length)})`}</span>
               </button>
               <button
                 className="primary-button"
@@ -1603,7 +1696,10 @@ function AutoOutfitsModal({ onClose, onCreated }) {
     <div className="builder-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="builder-modal" style={{ maxWidth: "460px" }}>
         <header className="builder-header">
-          <h2>יצירה אוטומטית של לוקים</h2>
+          <div>
+            <h2>יצירה אוטומטית של לוקים</h2>
+            <p style={{ margin: "4px 0 0", fontSize: "12px", color: "var(--muted)" }}>ה-AI בוחר שילובים ומלביש אותם עלייך. הלוקים נשמרים אוטומטית.</p>
+          </div>
           <button className="import-icon-button" type="button" onClick={onClose} aria-label="סגור">
             <X size={20} />
           </button>
@@ -1680,7 +1776,7 @@ function AutoOutfitsModal({ onClose, onCreated }) {
             style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
           >
             {generating && <ArrowClockwise size={16} className="spin" />}
-            <span>{generating ? "יוצר לוקים..." : "צור לוקים"}</span>
+            <span>{generating ? "יוצר לוקים..." : `צור לוקים (${autoLooksPrice(count)})`}</span>
           </button>
         </div>
       </div>
@@ -1699,6 +1795,7 @@ export function App() {
   const [builderMode, setBuilderMode] = useState("flatlay");
   const [autoModalOpen, setAutoModalOpen] = useState(false);
   const [builderInitialItems, setBuilderInitialItems] = useState([]);
+  const [builderInitialExtras, setBuilderInitialExtras] = useState({});
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selectMode, setSelectMode] = useState(false);
   const [checkedIds, setCheckedIds] = useState([]);
@@ -2157,8 +2254,9 @@ export function App() {
     }).catch(() => {});
   };
 
-  const openLookBuilder = (itemIds, mode = "flatlay") => {
+  const openLookBuilder = (itemIds, mode = "flatlay", extras = {}) => {
     setBuilderInitialItems(itemIds);
+    setBuilderInitialExtras(extras);
     setBuilderMode(mode);
     setBuilderOpen(true);
   };
@@ -2399,14 +2497,14 @@ export function App() {
                     onClick={() => setSelectedLook(look)}
                   >
                     <div className="look-card__image-wrap">
-                      <img className="look-card__image" src={look.image} alt={look.name} />
+                      <OptimizedImage className="look-card__image" src={look.image} onError={imageFallback(look.image)} alt={look.name} sizes="(max-width: 520px) 100vw, (max-width: 900px) 50vw, 360px" breakpoints={[320, 480, 640, 800]} />
                     </div>
                     <div className="look-card__body">
                       <h3 className="look-card__title">{look.name}</h3>
                       {!!look.garments?.length && (
                         <div className="look-card__garments">
                           {look.garments.map((g) => (
-                            <img key={g.id} className="look-card__garment-thumb" src={g.thumbnail} alt="" title={g.name} />
+                            <img key={g.id} className="look-card__garment-thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
                           ))}
                         </div>
                       )}
@@ -2490,7 +2588,7 @@ export function App() {
           <span className="selection-bar__count">{checkedIds.length ? `נבחרו ${checkedIds.length}` : "בחרי פריטים מהארון"}</span>
           <div className="selection-bar__actions">
             <button type="button" className="primary-button" disabled={!checkedIds.length} onClick={() => { openLookBuilder(checkedIds, "flatlay"); exitSelectMode(); }}>
-              <MagicWand size={15} aria-hidden="true" /> לוק בפריסה
+              <MagicWand size={15} aria-hidden="true" /> לוק בפריסה (חינם)
             </button>
             <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={() => { openLookBuilder(checkedIds, "modeled"); exitSelectMode(); }}>
               <User size={15} aria-hidden="true" /> לוק עליי (AI)
@@ -2573,6 +2671,8 @@ export function App() {
           items={items}
           initialItemIds={builderInitialItems}
           initialMode={builderMode}
+          initialNotes={builderInitialExtras.notes}
+          initialStyling={builderInitialExtras.styling}
           onClose={() => {
             setBuilderOpen(false);
             setBuilderInitialItems([]);
@@ -2605,10 +2705,15 @@ export function App() {
           onDelete={deleteOutfit}
           suitcaseCount={suitcases.filter((s) => s.outfitIds?.includes(selectedLook.id)).length}
           onPack={() => setPackingLookId(selectedLook.id)}
+          onCreateOnMe={(look) => {
+            const ids = (look.garmentIds || []).filter((id) => items.some((item) => item.id === id));
+            setSelectedLook(null);
+            openLookBuilder(ids, "modeled", { notes: [look.notes, stylingSummary(look.styling)].filter(Boolean).join(". ") });
+          }}
         />
       )}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || selectMode || Boolean(selectedItem)} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || selectMode || Boolean(selectedItem) || builderOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }

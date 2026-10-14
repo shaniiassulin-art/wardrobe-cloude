@@ -1,21 +1,26 @@
 const CACHE = "open-wardrobe-shell-v1";
 const IMAGE_CACHE = "wardrobe-images-v1";
-const ACTIVE_CACHES = new Set([CACHE, IMAGE_CACHE]);
+// Wardrobe and look photos. Their URLs change (?t=) whenever a photo is replaced,
+// so a saved copy never goes stale and can be shown straight from the phone.
+const PHOTO_CACHE = "wardrobe-photos-v1";
+const MAX_PHOTO_ENTRIES = 1500;
+const ACTIVE_CACHES = new Set([CACHE, IMAGE_CACHE, PHOTO_CACHE]);
+const isStoredPhoto = (url) => url.pathname.startsWith("/api/import/library/") || url.pathname.startsWith("/api/import/outfits/images/");
 const MAX_IMAGE_ENTRIES = 800;
 const SHELL = ["/", "/manifest.webmanifest"];
 
-async function trimImages(cache) {
+async function trimImages(cache, max = MAX_IMAGE_ENTRIES) {
   const keys = await cache.keys();
-  const overflow = keys.length - MAX_IMAGE_ENTRIES;
+  const overflow = keys.length - max;
   if (overflow > 0) await Promise.all(keys.slice(0, overflow).map((request) => cache.delete(request)));
 }
 
-async function fetchAndCacheImage(request, cache) {
+async function fetchAndCacheImage(request, cache, max) {
   const response = await fetch(request);
   const contentType = response.headers.get("content-type") || "";
   if (response.ok && !response.redirected && contentType.startsWith("image/")) {
     await cache.put(request, response.clone());
-    await trimImages(cache);
+    await trimImages(cache, max);
   }
   return response;
 }
@@ -35,7 +40,17 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  if (request.method !== "GET" || url.origin !== self.location.origin) return;
+
+  if (isStoredPhoto(url)) {
+    event.respondWith(caches.open(PHOTO_CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      return cached || fetchAndCacheImage(request, cache, MAX_PHOTO_ENTRIES);
+    }).catch(() => fetch(request)));
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/")) return;
 
   if (url.pathname.startsWith("/_ipx/")) {
     event.respondWith(caches.open(IMAGE_CACHE).then(async (cache) => {

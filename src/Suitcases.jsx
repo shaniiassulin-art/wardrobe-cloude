@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, MagicWand, PencilSimple, Plus, Suitcase, Trash, X } from "@phosphor-icons/react";
-import { fittedImage } from "./image-files.js";
+import { fittedImage, imageFallback, thumbUrl } from "./image-files.js";
 
 export const newSuitcaseId = () => `suitcase-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -193,7 +193,7 @@ export function LuggageView({ items, outfits = [], onOpenLook, suitcases, active
                 {packedLooks.map((look) => (
                   <article key={look.id} className="luggage-item-card luggage-look-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenLook?.(look)} aria-label={`צפייה בלוק ${look.name}`}>
-                      <img src={look.image} alt="" loading="lazy" />
+                      <img src={thumbUrl(look.image, 480)} onError={imageFallback(look.image)} alt="" loading="lazy" decoding="async" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{look.name}</h4>
@@ -207,7 +207,7 @@ export function LuggageView({ items, outfits = [], onOpenLook, suitcases, active
                 {packedItems.map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt="" />
+                      <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 320)} loading="lazy" decoding="async" onError={imageFallback(item.thumbnail || item.image)} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>
@@ -241,7 +241,7 @@ export function LuggageView({ items, outfits = [], onOpenLook, suitcases, active
                 {(addTab === "looks" ? availableLooks : []).map((look) => (
                   <article key={look.id} className="luggage-item-card luggage-look-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenLook?.(look)} aria-label={`צפייה בלוק ${look.name}`}>
-                      <img src={look.image} alt="" loading="lazy" />
+                      <img src={thumbUrl(look.image, 480)} onError={imageFallback(look.image)} alt="" loading="lazy" decoding="async" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{look.name}</h4>
@@ -255,7 +255,7 @@ export function LuggageView({ items, outfits = [], onOpenLook, suitcases, active
                 {(addTab === "items" ? availableItems : []).map((item) => (
                   <article key={item.id} className="luggage-item-card">
                     <button type="button" className="luggage-item-card__img-wrap" onClick={() => onOpenItem(item.id)} aria-label={`צפייה ב-${item.name}`}>
-                      <img src={fittedImage(item.thumbnail || item.image)} onError={(event) => { const plain = item.thumbnail || item.image; if (event.currentTarget.getAttribute("src") !== plain) event.currentTarget.src = plain; }} alt="" />
+                      <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 320)} loading="lazy" decoding="async" onError={imageFallback(item.thumbnail || item.image)} alt="" />
                     </button>
                     <div className="luggage-item-card__info">
                       <h4 className="luggage-item-card__title">{item.name}</h4>

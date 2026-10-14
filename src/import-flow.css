@@ -366,3 +366,24 @@
 .import-card__now { font-size: 12px; font-weight: 600; color: var(--import-ink); white-space: nowrap; }
 .import-editor__zoom:focus-visible,
 .import-card__zoom:focus-visible { outline: 2px solid var(--import-ink); outline-offset: 2px; }
+
+/* Phones: the add-clothes button is a small round button in the corner, and every
+   page leaves room at the bottom so it never sits on top of the last items. */
+@media (max-width: 640px) {
+  .gallery-pane { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .import-tray:not(.is-expanded) {
+    width: 52px;
+    height: 52px;
+    min-height: 0;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+  .import-tray:not(.is-expanded) .import-tray__label,
+  .import-tray:not(.is-expanded) .import-tray__preview { display: none; }
+  .import-tray.is-expanded { max-width: min(260px, calc(100vw - 24px)); }
+  .import-tray.is-expanded .import-tray__label { overflow: hidden; text-overflow: ellipsis; }
+}
+/* Never cover an open window */
+body:has(.builder-modal-overlay) .import-tray,
+body:has(.lightbox) .import-tray { display: none; }

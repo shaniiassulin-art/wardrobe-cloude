@@ -79,6 +79,10 @@
   background: var(--surface);
   box-shadow: 0 2px 8px rgba(94, 72, 52, .05);
 }
+/* These buttons sit on a light background here, so their text must be dark */
+.create-look-btn,
+.create-auto-btn { color: var(--ink); }
+.create-look-btn:hover { color: var(--paper); }
 
 /* Fields */
 .field input,
@@ -309,3 +313,22 @@
 .suitcase-add-tabs button.is-on { background: var(--ink); color: var(--paper); }
 .suitcase-add-tabs button.is-on small { color: inherit; opacity: .75; }
 .luggage-look-card .luggage-item-card__img-wrap img { object-fit: cover; }
+
+/* No zooming: no double-tap zoom, and no pinch zoom where the browser allows blocking it */
+html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, input, select, textarea, label { touch-action: manipulation; }
+
+/* Free flat-lay styling choices in the look builder */
+.styling-panel { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); display: grid; gap: 10px; }
+.styling-panel__title { margin: 0; font-size: 12px; font-weight: 600; color: var(--ink); }
+.styling-panel__title span { font-weight: 400; color: var(--muted); margin-inline-start: 6px; }
+.styling-choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.styling-choice__label { font-size: 13px; color: var(--ink); }
+.styling-choice__options { display: inline-flex; padding: 3px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); }
+.styling-choice__options button { border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+.styling-choice__options button.is-on { background: var(--ink); color: var(--paper); }
+.styling-choice__options button:disabled { opacity: .5; cursor: default; }
+
+/* Reminders that an AI result has already been paid for */
+.paid-unsaved-note { margin: 10px 0 0; font-size: 12px; color: var(--accent); }
+.import-paid-note { font-size: 12px; opacity: .85; }

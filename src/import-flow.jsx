@@ -3,6 +3,7 @@ import { ArrowCounterClockwise, Check, Plus, SpinnerGap, Trash, UploadSimple, Wa
 import "./import-flow.css";
 import { isImageFile, toBrowserImage } from "./image-files.js";
 import { ImageLightbox } from "./ImageLightbox.jsx";
+import { PRICES } from "./prices.js";
 
 const API = "/api/import/jobs";
 const CONFIG_API = "/api/import/config";
@@ -165,7 +166,7 @@ async function extractGarmentsInBrowser(imageDataUrl, onProgress) {
 }
 
 const IMPORT_MODES = [
-  { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה", note: "ה-AI מזהה כל בגד בתמונה ויוצר לו תמונת מוצר נקייה. עולה בערך 3 אגורות לבגד." },
+  { id: "catalog", title: "קטלוג AI", detail: "תמונת מוצר נקייה", note: "ה-AI מזהה כל בגד בתמונה ויוצר לו תמונת מוצר נקייה. עולה בערך 4 אגורות לבגד. החיוב הוא כשהתמונה נוצרת, עוד לפני האישור, ולכן גם בגד שנדחה עולה כסף." },
   { id: "free", title: "חינמי", detail: "גזירה במכשיר, בלי עלות", note: "מזהה כל בגד בתמונה ושומר אותו לבד, בלי פנים ואקססוריז. בלי עלות." },
   { id: "ai", title: "AI מלא", detail: "קטלוג והלבשה על המודל", note: "תמונת מוצר באיכות גבוהה ותמונה של הבגד עלייך. עולה בערך 2 ש\"ח לבגד בחשבון OpenAI." },
 ];
@@ -290,10 +291,11 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
           <label htmlFor={`regenerate-${job.id}-${stage}`}>הערה ל-AI <span>אופציונלי</span></label>
           <textarea id={`regenerate-${job.id}-${stage}`} rows="2" value={regenPrompt} onChange={(event) => setRegenPrompt(event.target.value)} placeholder="למשל: שמלת מקסי, בגד גוף, לשמור על הרוכסן" />
         </div>}
+        {!isCrop && job.mode !== "free" && <p className="import-card__detail import-paid-note">התמונה הזאת כבר נוצרה ושולמה. דחייה לא מחזירה את הכסף, ויצירה מחדש היא חיוב נוסף.</p>}
         <div className="import-actions">
           <button className="import-button" disabled={busy} onClick={() => onAction("reject")}><Trash size={14} /> דחייה</button>
-          {!isCrop && job.mode !== "free" && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt)}><ArrowCounterClockwise size={14} /> יצירה מחדש</button>}
-          {isGarment && job.mode === "catalog" && job.stages.garment.quality !== "medium" && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt, "medium")}><ArrowCounterClockwise size={14} /> עיבוד מחדש באיכות בינונית (כ-20 אגורות)</button>}
+          {!isCrop && job.mode !== "free" && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt)}><ArrowCounterClockwise size={14} /> יצירה מחדש ({isGarment && job.stages.garment.quality !== "medium" ? PRICES.catalogLow : isGarment ? PRICES.catalogMedium : PRICES.modeledItem})</button>}
+          {isGarment && job.mode === "catalog" && job.stages.garment.quality !== "medium" && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt, "medium")}><ArrowCounterClockwise size={14} /> עיבוד מחדש באיכות בינונית ({PRICES.catalogMedium})</button>}
           <button className="import-button import-button--primary" disabled={busy || (isGarment && (!draft.name.trim() || !primaryValid || !secondaryValid))} onClick={() => onAction("approve")}><Check size={14} weight="bold" /> {isCrop ? "אישור גזיר" : "אישור"}</button>
         </div>
       </div>
