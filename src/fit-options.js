@@ -6,7 +6,7 @@ const TOP = [
   { id: "waist", label: "עד קו המכנס" },
   { id: "hip", label: "עד הירכיים" },
   { id: "bottom", label: "עד הישבן" },
-  { id: "long", label: "ארוכה" },
+  { id: "long", label: "עד מעל הברך" },
 ];
 const JACKET = [
   { id: "crop", label: "קצר" },
@@ -14,7 +14,7 @@ const JACKET = [
   { id: "hip", label: "עד הירכיים" },
   { id: "bottom", label: "עד הישבן" },
   { id: "knee", label: "עד הברך" },
-  { id: "long", label: "ארוך" },
+  { id: "long", label: "עד אמצע השוק" },
 ];
 const BOTTOM = [
   { id: "shorts", label: "קצר" },

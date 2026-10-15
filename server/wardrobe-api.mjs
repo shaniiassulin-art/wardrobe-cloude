@@ -585,8 +585,9 @@ export function normalizeFlatlayStyling(input = {}) {
 // shoulders = 0, waist (where trousers start) = 1.
 // The flat lay sizes and stacks the pieces by these so lengths look true to life.
 export const GARMENT_FIT = {
-  top: { crop: 0.82, waist: 1.0, hip: 1.25, bottom: 1.45, long: 1.75 },
-  jacket: { crop: 0.85, waist: 1.0, hip: 1.25, bottom: 1.45, knee: 2.25, long: 2.85 },
+  // "hip" is halfway between the waist and the knee
+  top: { crop: 0.82, waist: 1.0, hip: 1.62, bottom: 1.8, long: 2.05 },
+  jacket: { crop: 0.85, waist: 1.0, hip: 1.62, bottom: 1.8, knee: 2.25, long: 2.8 },
   // Where trousers/skirts end. "onShoe" = falls over the shoe
   bottom: { shorts: 1.6, knee: 2.25, midi: 2.65, ankle: 3.0, onShoe: 3.15 },
   dress: { mini: 1.85, knee: 2.3, midi: 2.7, maxi: 3.1 },
@@ -854,7 +855,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
 
     let innerBox = null;
     if (innerPiece) {
-      const hem = isDressInner ? lengthOf(innerPiece, "dress", 2.3) : lengthOf(innerPiece, "top", 1.25);
+      const hem = isDressInner ? lengthOf(innerPiece, "dress", 2.3) : lengthOf(innerPiece, "top", 1.4);
       const size = sizeTo(innerPiece, 0, hem, isDressInner ? 420 : 400);
       innerBox = { left: centerX - size.w / 2, top: shoulderY + (jacketPiece && jacket === "behind" ? Math.round(T * 0.08) : 0), w: size.w, h: size.h };
     }

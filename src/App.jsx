@@ -605,10 +605,22 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
     onClose();
   };
 
-  const saveEditing = () => {
-    onSave({ ...item, ...draft, fit: fitForPart(draft.fit, draft.part), name: draft.name.trim(), brand: (draft.brand || "").trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+  // "idle" | "saving" | "saved" | "error": shown on the save button
+  const [saveState, setSaveState] = useState("idle");
+  const saveTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(saveTimerRef.current), []);
+  const saveEditing = async () => {
     setSampling(null);
-    setSampleStatus("השינויים נשמרו.");
+    setSaveState("saving");
+    try {
+      await onSave({ ...item, ...draft, fit: fitForPart(draft.fit, draft.part), name: draft.name.trim(), brand: (draft.brand || "").trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+      setSaveState("saved");
+      setSampleStatus("השינויים נשמרו.");
+    } catch {
+      setSaveState("error");
+    }
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveState("idle"), 2600);
   };
 
   const handleImageLoad = (event) => {
@@ -825,10 +837,14 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
         </button>
         <span className="action-spacer" />
         <button className="secondary-button" type="button" onClick={cancelEditing}>ביטול</button>
-        <button className="primary-button" type="button" onClick={saveEditing} disabled={!isDirty}>
-          <Check size={15} weight="bold" aria-hidden="true" /> שמירה
+        <button className={`primary-button save-button is-${saveState}`} type="button" onClick={saveEditing} disabled={!isDirty || saveState === "saving"}>
+          {saveState === "saving" ? <ArrowClockwise size={15} className="spin" aria-hidden="true" /> : <Check size={15} weight="bold" aria-hidden="true" />}
+          {saveState === "saving" ? "שומר..." : saveState === "saved" ? "נשמר" : "שמירה"}
         </button>
       </footer>
+      <p className={`save-toast is-${saveState}`} role="status" aria-live="polite">
+        {saveState === "saved" ? "השינויים נשמרו" : saveState === "error" ? "השמירה נכשלה. נסי שוב." : ""}
+      </p>
     </aside>
     </div>
     {zoomSrc && <ImageLightbox src={zoomSrc} alt={draft.name || type} onClose={() => setZoomSrc(null)} />}
@@ -1281,13 +1297,22 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
   const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling || {}) }));
   const [lookName, setLookName] = useState("");
-  const [activeFilterTab, setActiveFilterTab] = useState("all");
+  // One category open at a time; all closed at first
+  const [openCategory, setOpenCategory] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [completingAI, setCompletingAI] = useState(false);
   const [aiExplanation, setAiExplanation] = useState("");
   const [builderError, setBuilderError] = useState("");
   const [generatedLook, setGeneratedLook] = useState(null);
+  // Shows "the look is ready" over the preview for a moment after each creation
+  const [justCreated, setJustCreated] = useState(0);
+  const bodyRef = useRef(null);
+  useEffect(() => {
+    if (!justCreated) return undefined;
+    const timer = setTimeout(() => setJustCreated(0), 2800);
+    return () => clearTimeout(timer);
+  }, [justCreated]);
 
   useEffect(() => {
     if (initialMode) setOutfitMode(initialMode);
@@ -1368,14 +1393,11 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
     }
   };
 
-  const displayedWardrobeItems = useMemo(() => {
-    if (activeFilterTab === "all") return items;
-    return items.filter((item) => {
-      if (activeFilterTab === "dress") return item.part === "dress" || item.part === "wholebody";
-      if (activeFilterTab === "wholebody_up") return item.part === "wholebody_up" || item.part === "outerwear" || item.part === "jacket";
-      return item.part === activeFilterTab;
-    });
-  }, [items, activeFilterTab]);
+  const inCategory = (item, categoryId) => {
+    if (categoryId === "dress") return item.part === "dress" || item.part === "wholebody";
+    if (categoryId === "wholebody_up") return OUTER_PARTS.includes(item.part);
+    return item.part === categoryId;
+  };
 
   const handleGenerate = async (stylingOverride) => {
     if (!selectedIds.length) {
@@ -1403,6 +1425,8 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "שגיאה ביצירת לוק");
       setGeneratedLook({ ...data, mode: data.mode || outfitMode });
+      setJustCreated(Date.now());
+      requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
       if (!lookName.trim() && data.name) {
         setLookName(data.name);
       }
@@ -1456,19 +1480,13 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
   };
 
   const categoryTabs = [
-    { id: "all", label: "הכל" },
     { id: "upperbody", label: "חולצות" },
-    { id: "lowerbody", label: "מכנסיים" },
+    { id: "lowerbody", label: "מכנסיים וחצאיות" },
     { id: "dress", label: "שמלות" },
     { id: "wholebody_up", label: "עליוניות" },
     { id: "shoes", label: "נעליים" },
     { id: "accessories_up", label: "אקססוריז" },
   ];
-  const tabCount = (tabId) => tabId === "all" ? items.length : items.filter((i) => {
-    if (tabId === "dress") return i.part === "dress" || i.part === "wholebody";
-    if (tabId === "wholebody_up") return OUTER_PARTS.includes(i.part);
-    return i.part === tabId;
-  }).length;
   const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom));
   const restyle = (key, value) => {
     setStyling((current) => ({ ...current, [key]: value }));
@@ -1504,11 +1522,12 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
           ))}
         </div>
 
-        <div className="lb-body">
+        <div className="lb-body" ref={bodyRef}>
           {generatedLook && (
             <section className="lb-preview" aria-label="תצוגה מקדימה">
               <img src={thumbUrl(generatedLook.image, 1080)} onError={imageFallback(generatedLook.image)} alt={generatedLook.name} />
               {generating && <span className="lb-preview__busy"><ArrowClockwise size={18} className="spin" /></span>}
+              {!generating && justCreated > 0 && <span key={justCreated} className="lb-preview__done" role="status"><Check size={14} weight="bold" /> הלוק נוצר</span>}
             </section>
           )}
 
@@ -1541,36 +1560,40 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
               <p className="lb-empty">בחרי פריטים מהארון</p>
             )}
 
-            <div className="lb-tabs" role="tablist" aria-label="קטגוריה">
+            <div className="lb-cats">
               {categoryTabs.map((tab) => {
-                const count = tabCount(tab.id);
-                if (!count && tab.id !== "all") return null;
+                const pieces = items.filter((item) => inCategory(item, tab.id));
+                if (!pieces.length) return null;
+                const open = openCategory === tab.id;
+                const picked = pieces.filter((item) => selectedIds.includes(item.id)).length;
                 return (
-                  <button key={tab.id} type="button" role="tab" aria-selected={activeFilterTab === tab.id} className={activeFilterTab === tab.id ? "is-on" : ""} onClick={() => setActiveFilterTab(tab.id)}>
-                    {tab.label} <small>{count}</small>
-                  </button>
+                  <div key={tab.id} className={`lb-cat${open ? " is-open" : ""}`}>
+                    <button type="button" className="lb-cat__head" aria-expanded={open} onClick={() => setOpenCategory(open ? null : tab.id)}>
+                      <span className="lb-cat__name">{tab.label}</span>
+                      {picked > 0 && <span className="lb-cat__picked">{picked === 1 ? "נבחר 1" : `נבחרו ${picked}`}</span>}
+                      <span className="lb-cat__count">{pieces.length}</span>
+                      <CaretDown size={14} className="lb-cat__caret" aria-hidden="true" />
+                    </button>
+                    {open && (
+                      <div className="lb-grid">
+                        {pieces.map((item) => {
+                          const isSelected = selectedIds.includes(item.id);
+                          return (
+                            <button key={item.id} type="button" className={`lb-tile${isSelected ? " is-on" : ""}`} aria-pressed={isSelected} onClick={() => toggleItem(item.id)}>
+                              <span className="lb-tile__img">
+                                <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
+                                <span className="lb-tile__check" aria-hidden="true">{isSelected && <Check size={12} weight="bold" />}</span>
+                              </span>
+                              <span className="lb-tile__name">{item.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-
-            {displayedWardrobeItems.length ? (
-              <div className="lb-grid">
-                {displayedWardrobeItems.map((item) => {
-                  const isSelected = selectedIds.includes(item.id);
-                  return (
-                    <button key={item.id} type="button" className={`lb-tile${isSelected ? " is-on" : ""}`} aria-pressed={isSelected} onClick={() => toggleItem(item.id)}>
-                      <span className="lb-tile__img">
-                        <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
-                        <span className="lb-tile__check" aria-hidden="true">{isSelected && <Check size={12} weight="bold" />}</span>
-                      </span>
-                      <span className="lb-tile__name">{item.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="lb-empty">אין פריטים בקטגוריה הזאת</p>
-            )}
           </section>
 
           {showStyling && (
@@ -2305,14 +2328,16 @@ export function App() {
     }
   };
 
+  // Throws when the server did not save, so the item window can say so
   const saveItem = async (updatedItem) => {
     setItems((current) => current.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
+    const response = await fetch(`/api/import/wardrobe/${updatedItem.id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
+      body: JSON.stringify(updatedItem),
+    });
+    if (!response.ok) throw new Error("save failed");
     try {
-      await fetch(`/api/import/wardrobe/${updatedItem.id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
-        body: JSON.stringify(updatedItem),
-      });
       await fetch(`/api/import/user/sync?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
