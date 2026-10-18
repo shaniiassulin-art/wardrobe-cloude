@@ -557,3 +557,21 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .lb-cat .lb-grid { padding: 2px 12px 14px; animation: lb-open 200ms ease both; }
 @keyframes lb-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .save-button.is-saved:disabled, .save-button.is-saving:disabled { opacity: 1; }
+
+/* Archive */
+.archive-view { padding-bottom: 24px; }
+.archive-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.archive-bar__all { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; padding: 4px 2px; }
+.archive-bar__count { flex: 1 1 auto; font-size: 13px; color: var(--muted); }
+.archive-bar__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.archive-bar__actions button:disabled { opacity: .45; cursor: default; }
+.archive-item .gallery-item__main img { opacity: .78; filter: saturate(.8); }
+.archive-item.is-checked .gallery-item__main img { opacity: 1; filter: none; }
+.archive-item__date { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.archive-item__restore { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 5px 10px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.selection-bar__delete { color: var(--accent) !important; }
+.archive-bar { margin: 28px 52px 0; }
+.archive-view .gallery-grid { padding-top: 24px; }
+@media (max-width: 1100px) { .archive-bar { margin-inline: 32px; } }
+@media (max-width: 720px) { .archive-bar { margin: 18px 20px 0; } }
+@media (max-width: 520px) { .archive-bar { margin: 16px 12px 0; } }

@@ -387,3 +387,21 @@
 /* Never cover an open window */
 body:has(.builder-modal-overlay) .import-tray,
 body:has(.lightbox) .import-tray { display: none; }
+
+/* More breathing room while photos load */
+.import-popover > .import-mode-note,
+.import-popover > .import-mode { margin: 0 0 18px; line-height: 1.6; }
+.import-live-status { gap: 14px; margin: 0 0 22px; padding: 18px 18px 20px; border-radius: 16px; background: rgba(255, 255, 255, .45); }
+.import-live-status__text { gap: 10px; font-size: 15px; line-height: 1.55; align-items: flex-start; }
+.import-live-status__text svg { flex: 0 0 auto; margin-top: 3px; }
+.import-live-status .import-progress__track { height: 4px; }
+.import-progress { gap: 14px; margin: 22px 0 26px; }
+.import-progress__meta { font-size: 13px; line-height: 1.55; }
+.import-card { gap: 16px; padding: 12px; }
+.import-card__title { margin-bottom: 6px; line-height: 1.4; }
+.import-card__detail { line-height: 1.55; }
+.import-card-list { gap: 12px; }
+@media (max-width: 640px) {
+  .import-popover__header { margin-bottom: 18px; }
+  .import-live-status { padding: 16px; }
+}

@@ -2279,6 +2279,52 @@ Respond in strict JSON format:
     await store.setJSON(getWardrobeKeys(wardrobeId).importedFile, records);
   }
 
+  // Deleted items go to an archive (photos kept) so they can be brought back
+  const archiveKey = (wardrobeId) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, "archive.json");
+  async function loadArchive(wardrobeId = "user-shani") {
+    return (await store.getJSON(archiveKey(wardrobeId)).catch(() => null)) || [];
+  }
+  async function saveArchive(wardrobeId = "user-shani", records = []) {
+    await store.setJSON(archiveKey(wardrobeId), records);
+  }
+  async function archiveItems(wardrobeId, ids) {
+    const wanted = new Set(ids);
+    const records = await loadImported(wardrobeId);
+    const moving = records.filter((record) => wanted.has(record.id));
+    if (!moving.length) return [];
+    const archivedAt = new Date().toISOString();
+    for (const record of moving) {
+      const pendingFile = record.pendingVersion?.file;
+      if (pendingFile) await store.delete(libraryKey(pendingFile)).catch(() => {});
+    }
+    const archive = await loadArchive(wardrobeId);
+    const moved = moving.map((record) => ({ ...record, pendingVersion: null, archivedAt }));
+    await saveArchive(wardrobeId, [...moved, ...archive.filter((record) => !wanted.has(record.id))]);
+    await saveImported(wardrobeId, records.filter((record) => !wanted.has(record.id)));
+    return moved.map((record) => record.id);
+  }
+  async function restoreItems(wardrobeId, ids) {
+    const wanted = new Set(ids);
+    const archive = await loadArchive(wardrobeId);
+    const back = archive.filter((record) => wanted.has(record.id)).map(({ archivedAt, ...record }) => record);
+    if (!back.length) return [];
+    const records = await loadImported(wardrobeId);
+    const existing = new Set(records.map((record) => record.id));
+    await saveImported(wardrobeId, [...records, ...back.filter((record) => !existing.has(record.id))]);
+    await saveArchive(wardrobeId, archive.filter((record) => !wanted.has(record.id)));
+    return back;
+  }
+  async function purgeItems(wardrobeId, ids) {
+    const wanted = new Set(ids);
+    const archive = await loadArchive(wardrobeId);
+    const removing = archive.filter((record) => wanted.has(record.id));
+    for (const { id } of removing) {
+      await Promise.all(["garment", "modeled", "original", "open"].map((kind) => store.delete(libraryKey(`${id}-${kind}.png`)).catch(() => {})));
+    }
+    await saveArchive(wardrobeId, archive.filter((record) => !wanted.has(record.id)));
+    return removing.map((record) => record.id);
+  }
+
   async function persistImported(job, includeModeled = false) {
     const wId = job.wardrobeId || "user-shani";
     const id = `import-${job.id}`;
@@ -2689,22 +2735,29 @@ Respond in strict JSON format:
         if (!data) return json(404, { error: "No model reference photo found" });
         return imageResponse(data, { cache: "no-store", head: request.method === "HEAD" });
       }
+      const idList = (input) => (Array.isArray(input?.ids) ? input.ids : []).filter((id) => typeof id === "string" && /^[\w-]{1,80}$/.test(id)).slice(0, 500);
+      if (url.pathname === "/api/import/archive" && request.method === "GET") {
+        return json(200, await loadArchive(resolveWardrobeId(request, url)));
+      }
+      if (url.pathname === "/api/import/wardrobe/archive" && request.method === "POST") {
+        const ids = idList(await body(request));
+        return json(200, { archived: await archiveItems(resolveWardrobeId(request, url), ids) });
+      }
+      if (url.pathname === "/api/import/archive/restore" && request.method === "POST") {
+        const ids = idList(await body(request));
+        return json(200, { restored: await restoreItems(resolveWardrobeId(request, url), ids) });
+      }
+      if (url.pathname === "/api/import/archive/purge" && request.method === "POST") {
+        const ids = idList(await body(request));
+        return json(200, { deleted: await purgeItems(resolveWardrobeId(request, url), ids) });
+      }
       const wardrobeDeleteMatch = url.pathname.match(/^\/api\/import\/wardrobe\/([\w-]+)$/i);
       if (wardrobeDeleteMatch && request.method === "DELETE") {
+        // Deleting moves the item to the archive
         const id = wardrobeDeleteMatch[1];
-        const wId = resolveWardrobeId(request, url);
-        const records = await loadImported(wId);
-        const next = records.filter((record) => record.id !== id);
-        if (next.length === records.length) return json(404, { error: "Wardrobe item not found" });
-        const pendingFile = records.find((record) => record.id === id)?.pendingVersion?.file;
-        if (pendingFile) await store.delete(libraryKey(pendingFile)).catch(() => {});
-        await saveImported(wId, next);
-        await Promise.all([
-          store.delete(libraryKey(`${id}-garment.png`)).catch(() => {}),
-          store.delete(libraryKey(`${id}-modeled.png`)).catch(() => {}),
-          store.delete(libraryKey(`${id}-original.png`)).catch(() => {}),
-        ]);
-        return json(200, { deleted: true, id });
+        const moved = await archiveItems(resolveWardrobeId(request, url), [id]);
+        if (!moved.length) return json(404, { error: "Wardrobe item not found" });
+        return json(200, { deleted: true, archived: true, id });
       }
       const wardrobeUpdateMatch = url.pathname.match(/^\/api\/import\/wardrobe\/([\w-]+)$/i);
       if (wardrobeUpdateMatch && (request.method === "PUT" || request.method === "PATCH")) {

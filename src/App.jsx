@@ -8,6 +8,7 @@ import { LuggageView, SuitcasePicker, newSuitcaseId } from "./Suitcases.jsx";
 import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilters.jsx";
 import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
+import { ArchiveView } from "./ArchiveView.jsx";
 import { fitForPart } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
@@ -38,6 +39,7 @@ const TYPES = [
   { id: "wholebody_up", label: "עליוניות", singular: "עליונית" },
   { id: "shoes", label: "נעליים", singular: "נעליים" },
   { id: "accessories_up", label: "אקססוריז", singular: "אקססורי" },
+  { id: "archive", label: "ארכיון" },
 ];
 
 const OUTFIT_SLOTS = [
@@ -362,7 +364,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       <label className="field">
         <span>קטגוריה</span>
         <select value={draft.part} onChange={(event) => setDraft((current) => ({ ...current, part: event.target.value }))}>
-          {TYPES.filter((type) => !["all", "looks", "luggage"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+          {TYPES.filter((type) => !["all", "looks", "luggage", "archive"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
         </select>
       </label>
 
@@ -953,23 +955,52 @@ const formatUsd = (value) => `$${(Number(value) || 0).toFixed((Number(value) || 
 const formatIls = (value) => `כ-${Math.round((Number(value) || 0) * USD_TO_ILS * 100) / 100} ₪`;
 const formatDate = (iso) => { try { return new Date(iso).toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" }); } catch { return ""; } };
 
-// What the OpenAI account spent in the past year (needs OPENAI_ADMIN_KEY on the server)
+// OpenAI balance and the past year's spending. OpenAI has no API for the balance,
+// so it is typed in once from the billing page and charges since then are subtracted.
 function AiSpendingSection() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch("/api/import/billing", { cache: "no-store" })
       .then(async (res) => {
         const result = await res.json();
         if (!res.ok) throw new Error(result.error || "לא ניתן לטעון את נתוני השימוש");
         setData(result);
+        setError("");
       })
       .catch((err) => setError(err.message || "לא ניתן לטעון את נתוני השימוש"));
   }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const saveBalance = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch("/api/import/billing/balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balanceUsd: input === "" ? null : Number(input) }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "לא ניתן לשמור");
+      setData(result);
+      setEditing(false);
+      setError("");
+    } catch (err) {
+      setError(err.message || "לא ניתן לשמור");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const actual = data?.actual;
+  const balance = data?.balance;
   const year = actual?.configured && Number.isFinite(actual.yearUsd) ? actual.yearUsd : null;
+  const remaining = balance ? Math.max(0, balance.remainingUsd) : null;
 
   return (
     <section className="account-section" aria-labelledby="account-ai-title">
@@ -977,13 +1008,38 @@ function AiSpendingSection() {
       {!data && !error && <p className="account-hint">טוען...</p>}
       {data && (
         <>
-          <div className="ai-spend-tile">
-            <span className="ai-spend-tile__label">נוצל בשנה האחרונה</span>
-            <strong>{year === null ? "—" : formatUsd(year)}</strong>
-            <small>{year === null ? "אין נתונים מ-OpenAI" : `${formatIls(year)} · לפי OpenAI`}</small>
+          <div className="ai-spend-grid">
+            <div className={`ai-spend-tile${remaining !== null && remaining < 1 ? " is-low" : ""}`}>
+              <span className="ai-spend-tile__label">נשאר בחשבון</span>
+              <strong>{remaining === null ? "—" : formatUsd(remaining)}</strong>
+              <small>{remaining === null ? "צריך להזין יתרה" : `${formatIls(remaining)} · ${balance.source === "actual" ? "לפי OpenAI" : "הערכה"}`}</small>
+            </div>
+            <div className="ai-spend-tile">
+              <span className="ai-spend-tile__label">נוצל בשנה האחרונה</span>
+              <strong>{year === null ? "—" : formatUsd(year)}</strong>
+              <small>{year === null ? "אין נתונים מ-OpenAI" : `${formatIls(year)} · לפי OpenAI`}</small>
+            </div>
           </div>
-          {!actual?.configured && <p className="account-hint">כדי לראות את הסכום צריך להוסיף ב-Netlify מפתח מנהל של OpenAI בשם OPENAI_ADMIN_KEY.</p>}
-          {actual?.configured && !actual.error && <p className="account-hint">{actual.projectFiltered ? "החיובים של הפרויקט של האתר בלבד." : "החיובים של כל המפתחות בחשבון OpenAI."}</p>}
+
+          {editing ? (
+            <form className="account-row" onSubmit={saveBalance}>
+              <input className="account-input" type="number" inputMode="decimal" min="0" step="0.01" dir="ltr" placeholder="למשל 10" value={input} onChange={(e) => setInput(e.target.value)} aria-label="היתרה הנוכחית בדולרים" autoFocus />
+              <button className="secondary-button" type="submit" disabled={saving}>{saving ? "שומר..." : "שמירה"}</button>
+              <button className="secondary-button" type="button" onClick={() => setEditing(false)}>ביטול</button>
+            </form>
+          ) : (
+            <div className="account-row ai-spend-actions">
+              <button className="secondary-button" type="button" onClick={() => { setInput(remaining === null ? "" : String(Number(remaining.toFixed(2)))); setEditing(true); }}>
+                {balance ? "עדכון היתרה" : "הזנת היתרה"}
+              </button>
+              <a className="secondary-button" href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noreferrer">לעמוד החיוב ב-OpenAI</a>
+            </div>
+          )}
+          <p className="account-hint">
+            OpenAI לא נותנת לאתר לקרוא את היתרה, אז מעתיקים אותה פעם אחת מעמוד החיוב (Credit balance, בדולרים). מאז האתר מוריד ממנה את מה שנוצל.
+            {balance ? ` היתרה עודכנה ב-${formatDate(balance.setAt)}.` : ""}
+          </p>
+          {!actual?.configured && <p className="account-hint">כדי לראות את מה שנוצל בשנה האחרונה צריך להוסיף ב-Netlify מפתח מנהל של OpenAI בשם OPENAI_ADMIN_KEY.</p>}
           {actual?.error && <p className="account-error" role="alert">{actual.error}</p>}
         </>
       )}
@@ -1797,8 +1853,10 @@ export function App() {
   const [items, setItems] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
+  const isWardrobeView = !["looks", "luggage", "archive"].includes(activeType);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
+  const [archived, setArchived] = useState([]);
   // Look photos opened full screen from the looks page: { look, index }
   const [lookZoom, setLookZoom] = useState(null);
   const [packingLookId, setPackingLookId] = useState(null);
@@ -1932,6 +1990,18 @@ export function App() {
     } catch {}
   }, [activeWardrobeId]);
 
+  const fetchArchive = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/import/archive?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+        headers: { "x-wardrobe-id": activeWardrobeId },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArchived(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+  }, [activeWardrobeId]);
+
   const fetchUserProfile = useCallback(async () => {
     try {
       const res = await fetch(`/api/import/user?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
@@ -1954,6 +2024,7 @@ export function App() {
     fetchSuitcases();
     fetchOutfits();
     fetchUserProfile();
+    fetchArchive();
 
     // Auto-sync across devices: poll while visible and whenever the tab becomes active.
     // Kept infrequent because every request counts toward the hosting quota.
@@ -1983,7 +2054,7 @@ export function App() {
       window.removeEventListener("focus", onSync);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [activeWardrobeId, fetchWardrobe, fetchSuitcases, fetchOutfits, fetchUserProfile, fetchWardrobesList]);
+  }, [activeWardrobeId, fetchWardrobe, fetchSuitcases, fetchOutfits, fetchUserProfile, fetchWardrobesList, fetchArchive]);
 
   const handleSwitchWardrobe = useCallback((newId) => {
     if (!newId || newId === activeWardrobeId) return;
@@ -2199,7 +2270,7 @@ export function App() {
   const selectedItem = items.find((item) => item.id === selectedId) || null;
 
   const visibleItems = useMemo(() => {
-    if (activeType === "looks" || activeType === "luggage") return [];
+    if (!isWardrobeView) return [];
     const filtered = (activeType === "all"
       ? items
       : items.filter((item) => {
@@ -2361,9 +2432,50 @@ export function App() {
         body: JSON.stringify({ lastDeletedItem: id }),
       });
       fetchWardrobe();
+      fetchArchive();
     } catch (requestError) {
       setError(requestError.message);
     }
+  };
+
+  // Several items at once, from the selection bar. They go to the archive.
+  const archiveSelected = async (ids) => {
+    if (!ids.length) return;
+    if (!window.confirm(ids.length === 1 ? "להעביר את הפריט לארכיון?" : `להעביר ${ids.length} פריטים לארכיון?`)) return;
+    setItems((current) => current.filter((item) => !ids.includes(item.id)));
+    exitSelectMode();
+    try {
+      const res = await fetch(`/api/import/wardrobe/archive?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error("לא ניתן למחוק כרגע");
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+    fetchWardrobe();
+    fetchArchive();
+  };
+
+  const restoreArchived = async (ids) => {
+    const res = await fetch(`/api/import/archive/restore?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) setError("לא ניתן להחזיר כרגע");
+    await Promise.all([fetchWardrobe(), fetchArchive()]);
+  };
+
+  const purgeArchived = async (ids) => {
+    const res = await fetch(`/api/import/archive/purge?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-wardrobe-id": activeWardrobeId },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) setError("לא ניתן למחוק כרגע");
+    await fetchArchive();
   };
 
   const deleteOutfit = async (id) => {
@@ -2397,6 +2509,8 @@ export function App() {
                 ? `${outfits.length} ${outfits.length === 1 ? "לוק" : "לוקים"}`
                 : activeType === "luggage"
                 ? `${suitcases.length} ${suitcases.length === 1 ? "מזוודה" : "מזוודות"}`
+                : activeType === "archive"
+                ? `${archived.length} בארכיון`
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
             </p>
             <div className="header-actions">
@@ -2418,7 +2532,7 @@ export function App() {
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
               </button>
 
-              {activeType !== "looks" && activeType !== "luggage" && items.length > 0 && (
+              {isWardrobeView && items.length > 0 && (
                 <button
                   type="button"
                   className={`secondary-header-btn select-toggle${selectMode ? " is-active" : ""}`}
@@ -2463,7 +2577,7 @@ export function App() {
             </div>
           </div>
           <nav className="category-nav" aria-label="סינון לפי קטגוריה">
-            {TYPES.map((type) => (
+            {TYPES.filter((type) => type.id !== "archive" || archived.length > 0 || activeType === "archive").map((type) => (
               <button
                 key={type.id}
                 type="button"
@@ -2490,7 +2604,7 @@ export function App() {
               </button>
             </div>
           )}
-          {activeType !== "looks" && activeType !== "luggage" && !!items.length && (
+          {isWardrobeView && !!items.length && (
             <WardrobeFilters items={items} filters={filters} onChange={setFilters} />
           )}
         </header>
@@ -2565,8 +2679,12 @@ export function App() {
           />
         )}
 
+        {activeType === "archive" && (
+          <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />
+        )}
+
         {/* WARDROBE ITEMS VIEW */}
-        {activeType !== "looks" && activeType !== "luggage" && !error && !loading && !items.length && (
+        {isWardrobeView && !error && !loading && !items.length && (
           <div className="empty-wardrobe-container">
             <div className="empty-wardrobe-card">
               <h2 className="empty-wardrobe-title">המלתחה ריקה</h2>
@@ -2577,7 +2695,7 @@ export function App() {
           </div>
         )}
 
-        {activeType !== "looks" && activeType !== "luggage" && !!items.length && !visibleItems.length && (
+        {isWardrobeView && !!items.length && !visibleItems.length && (
           <div className="empty-wardrobe-container">
             <div className="empty-wardrobe-card">
               <h2 className="empty-wardrobe-title">אין פריטים שמתאימים</h2>
@@ -2587,7 +2705,7 @@ export function App() {
           </div>
         )}
 
-        {activeType !== "looks" && activeType !== "luggage" && !!items.length && (
+        {isWardrobeView && !!items.length && (
           <section className="gallery-grid" aria-label={`פריטי מלתחה`}>
             {visibleItems.map((item) => (
               <GalleryItem
@@ -2616,6 +2734,9 @@ export function App() {
             </button>
             <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={() => setPackingIds(checkedIds)}>
               <Suitcase size={15} aria-hidden="true" /> למזוודה
+            </button>
+            <button type="button" className="secondary-button selection-bar__delete" disabled={!checkedIds.length} onClick={() => archiveSelected(checkedIds)}>
+              <Trash size={15} aria-hidden="true" /> מחיקה
             </button>
             <button type="button" className="import-icon-button" onClick={exitSelectMode} aria-label="ביטול הבחירה"><X size={18} /></button>
           </div>
@@ -2737,7 +2858,7 @@ export function App() {
 
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || selectMode || Boolean(selectedItem) || builderOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || selectMode || Boolean(selectedItem) || builderOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }
