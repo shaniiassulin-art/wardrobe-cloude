@@ -969,9 +969,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     const laidApart = belts.length > 0 && Boolean(bottomPiece);
 
     // Cuts a piece in two and spreads the halves `gap` apart around the body line
-    const openBoxes = async (piece, size, gap, top) => {
-      if (piece.openBuffer) return [{ left: centerX - size.w / 2, top, w: size.w, h: size.h, buffer: piece.openBuffer, fit: "fill" }];
-      const halves = await splitDownTheMiddle(piece.buffer);
+    const openBoxes = async (piece, size, gap, top, split = false) => {
+      if (piece.openBuffer && !split) return [{ left: centerX - size.w / 2, top, w: size.w, h: size.h, buffer: piece.openBuffer, fit: "fill" }];
+      const halves = await splitDownTheMiddle(piece.openBuffer || piece.buffer);
       const halfW = Math.round(size.w / 2);
       return [
         { left: centerX - gap / 2 - halfW, top, w: halfW, h: size.h, buffer: halves.left, fit: "fill" },
@@ -1005,66 +1005,69 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     // Collars line up with the innermost layer's
     const collarY = innerBox ? innerBox.top : shoulderY;
 
-    // Outer layers, each laid open (the layers under it show between its fronts),
-    // closed (over the layer under it), or beside the stack in front of / behind it
+    // Outer layers. Layers that are not open (closed, in front, behind) are laid
+    // next to each other in a row, so every one is seen whole; open layers go over
+    // everything, their fronts at the two sides of the row.
     const aboveDraws = [];
-    const closedDraws = []; // closed layers, drawn under every open one
+    const closedDraws = []; // drawn under every open layer
     const behindDraws = [];
     const upperBoxes = innerBox && !innerDraws.length ? [innerBox] : [...innerDraws];
+    const rowBoxes = innerBox && !innerDraws.length ? [innerBox] : [];
     // A short inner top (a crop) does not make the layers over it smaller
-    let prevW = Math.max(innerBox ? innerBox.w : 0, Math.round(waistW * bustToHips));
-    let prevGap = 0;
-    let besideUsed = false;
-    let diagonalUsed = false;
-    let lastSingle = innerBox && !innerDraws.length ? innerBox : null;
-    for (let index = 1; index < orderedUpper.length; index++) {
-      const piece = orderedUpper[index];
-      const style = styleOf(piece, index);
+    const bodyW = Math.round(waistW * bustToHips);
+    let prevW = Math.max(innerBox ? innerBox.w : 0, bodyW);
+    let widest = prevW;
+    let rowUsed = false;
+    const sizeLayer = (piece, style, underW) => {
       const big = isOversize(piece);
-      const base = prevW * (layerKind(piece) === "jacket" ? (big ? 1.3 : 1.1) : (big ? 1.25 : 1.06));
-      const size = sizeTo(piece, 0, hemOf(piece), base, style === "open" && piece.openBuffer ? piece.openRatio : piece.ratio, [0.96, 1.06]);
-      let boxes;
-      if (style === "open") {
-        // Each open layer spreads wider than the open layer under it, so every one peeks out
-        const gap = Math.min(Math.round(size.w * 0.78), prevGap ? prevGap + Math.round(prevW * 0.3) : Math.round(prevW * 0.42));
-        boxes = await openBoxes(piece, size, gap, collarY);
-        prevGap = gap;
-        aboveDraws.push(...boxes.map((box) => [piece, box]));
-      } else if (style === "closed") {
-        // Closed over another layer: laid on a diagonal (down and to the side) so the
-        // layer under it still shows at the collar and along one side
-        const under = lastSingle || { left: centerX - prevW / 2, top: collarY, w: prevW };
-        const dx = Math.round(under.w * 0.16);
-        const dy = Math.round(T * 0.14);
-        boxes = [{ left: under.left + under.w / 2 - size.w / 2 + dx, top: under.top + dy, w: size.w, h: size.h, fit: "fill" }];
-        besideUsed = true;
-        diagonalUsed = true;
-        prevGap = 0;
-        closedDraws.push([piece, boxes[0]]);
-      } else {
-        // Beside the stack with a small overlap, so every layer stays recognisable
-        besideUsed = true;
-        const stackRight = Math.max(...upperBoxes.map((box) => box.left + box.w), centerX);
-        const overlap = Math.round(Math.min(size.w, prevW) * 0.3);
-        boxes = [{ left: stackRight - overlap, top: collarY + 10, w: size.w, h: size.h, fit: "fill" }];
-        if (style === "behind") behindDraws.unshift([piece, boxes[0]]);
-        else aboveDraws.push([piece, boxes[0]]);
-      }
-      upperBoxes.push(...boxes);
-      lastSingle = boxes.length === 1 && style !== "open" ? boxes[0] : lastSingle;
+      const base = underW * (layerKind(piece) === "jacket" ? (big ? 1.3 : 1.1) : (big ? 1.25 : 1.06));
+      return sizeTo(piece, 0, hemOf(piece), base, style === "open" && piece.openBuffer ? piece.openRatio : piece.ratio, [0.96, 1.06]);
+    };
+    const layered = orderedUpper.slice(1).map((piece, i) => ({ piece, style: styleOf(piece, i + 1) }));
+    for (const { piece, style } of layered.filter((layer) => layer.style !== "open")) {
+      const size = sizeLayer(piece, style, prevW);
+      const rowRight = rowBoxes.length ? Math.max(...rowBoxes.map((box) => box.left + box.w)) : centerX - size.w / 2;
+      const overlap = rowBoxes.length ? Math.round(Math.min(size.w, prevW) * (style === "closed" ? 0.1 : 0.3)) : 0;
+      const box = { left: rowRight - overlap, top: collarY + (rowBoxes.length ? 8 : 0), w: size.w, h: size.h, fit: "fill" };
+      if (style === "behind") behindDraws.unshift([piece, box]);
+      else closedDraws.push([piece, box]);
+      rowBoxes.push(box);
+      upperBoxes.push(box);
+      rowUsed = rowBoxes.length > 1;
       prevW = size.w;
+      widest = Math.max(widest, size.w);
     }
-    // Pieces laid beside each other are centred as a group
-    if (besideUsed && upperBoxes.length) {
-      const minLeft = Math.min(...upperBoxes.map((box) => box.left));
-      const maxRight = Math.max(...upperBoxes.map((box) => box.left + box.w));
+    // The row is centred, so the open layers frame it evenly
+    if (rowBoxes.length > 1) {
+      const minLeft = Math.min(...rowBoxes.map((box) => box.left));
+      const maxRight = Math.max(...rowBoxes.map((box) => box.left + box.w));
       const shift = Math.round(centerX - (minLeft + maxRight) / 2);
-      for (const box of new Set([...upperBoxes, innerBox].filter(Boolean))) box.left += shift;
+      for (const box of rowBoxes) box.left += shift;
     }
+    const rowW = rowBoxes.length ? Math.max(...rowBoxes.map((box) => box.left + box.w)) - Math.min(...rowBoxes.map((box) => box.left)) : prevW;
+    let prevGap = 0;
+    let openUnderW = widest;
+    for (const { piece, style } of layered.filter((layer) => layer.style === "open")) {
+      const size = sizeLayer(piece, style, openUnderW);
+      const halfW = size.w / 2;
+      // Each open layer spreads wider than the open layer under it, so every one peeks out;
+      // over a row of layers its fronts sit at the row's two sides
+      const gap = prevGap
+        ? prevGap + Math.round(openUnderW * 0.3)
+        : rowBoxes.length > 1
+          ? Math.round(rowW - halfW * 0.8)
+          : Math.min(Math.round(size.w * 0.78), Math.round(openUnderW * 0.42));
+      const boxes = await openBoxes(piece, size, gap, collarY, rowBoxes.length > 1);
+      prevGap = gap;
+      aboveDraws.push(...boxes.map((box) => [piece, box]));
+      upperBoxes.push(...boxes);
+      openUnderW = size.w;
+    }
+    const diagonalUsed = rowUsed;
     const jacketHemY = upperBoxes.length ? Math.max(...upperBoxes.map((box) => box.top + box.h)) : null;
     const jacketPiece = orderedUpper.length > 1 ? orderedUpper[orderedUpper.length - 1] : null;
     // Trousers, belt and shoes line up under the top (it may sit off-centre beside a jacket)
-    // (with layers laid on a diagonal, under the middle of the whole stack)
+    // (with layers laid in a row, under the middle of the whole row)
     const bodyX = innerBox && !diagonalUsed ? innerBox.left + innerBox.w / 2 : centerX;
 
     let bottomBox = null;
@@ -1077,7 +1080,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     // trousers. Without a belt the lengths chosen for each piece decide the overlap.
     let beltBoxes = [];
     if (belts.length && bottomBox) {
-      const upperBottom = innerBox ? innerBox.top + innerBox.h : jacketHemY ?? shoulderY;
+      const upperBottom = rowBoxes.length > 1 ? Math.max(...rowBoxes.map((box) => box.top + box.h)) : innerBox ? innerBox.top + innerBox.h : jacketHemY ?? shoulderY;
       const gap = 22;
       let y = upperBottom + gap;
       beltBoxes = belts.map((belt) => {
