@@ -865,7 +865,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     if (innerPiece) {
       const hem = isDressInner ? lengthOf(innerPiece, "dress", 2.3) : lengthOf(innerPiece, "top", 1.4);
       const size = sizeTo(innerPiece, 0, hem, isDressInner ? 420 : 400);
-      innerBox = { left: centerX - size.w / 2, top: shoulderY + (jacketPiece && jacket === "behind" ? Math.round(T * 0.08) : 0), w: size.w, h: size.h };
+      innerBox = { left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h };
     }
 
     let jacketBoxes = [];
@@ -887,20 +887,30 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
           { left: centerX + gap / 2, top: shoulderY, w: halfW, h: size.h, buffer: halves.right, fit: "fill" },
         ];
         jacketHemY = shoulderY + size.h;
+      } else if (innerPiece) {
+        // Whole jacket in front of or behind the top: laid beside it with a small
+        // overlap, so both pieces stay fully recognisable
+        const size = sizeTo(jacketPiece, 0, hem, 420);
+        const overlap = Math.round(Math.min(size.w, innerBox.w) * 0.3);
+        const total = innerBox.w + size.w - overlap;
+        innerBox.left = Math.round(centerX - total / 2);
+        jacketBoxes = [{ left: innerBox.left + innerBox.w - overlap, top: shoulderY + 10, w: size.w, h: size.h }];
+        jacketHemY = shoulderY + 10 + size.h;
       } else {
         const size = sizeTo(jacketPiece, 0, hem, 440);
-        const top = shoulderY + (style === "front" && innerPiece ? Math.round(T * 0.1) : 0);
-        jacketBoxes = [{ left: centerX - size.w / 2, top, w: size.w, h: size.h }];
-        jacketHemY = top + size.h;
+        jacketBoxes = [{ left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h }];
+        jacketHemY = shoulderY + size.h;
       }
     }
+    // Trousers, belt and shoes line up under the top (it may sit off-centre beside a jacket)
+    const bodyX = innerBox ? innerBox.left + innerBox.w / 2 : centerX;
 
     let bottomBox = null;
     if (bottomPiece) {
       const end = lengthOf(bottomPiece, "bottom", isSkirt ? 2.25 : ANKLE);
       const size = sizeTo(bottomPiece, 1, end, 380);
       const top = innerPiece || jacketPiece ? waistY : shoulderY;
-      bottomBox = { left: centerX - size.w / 2, top, w: size.w, h: size.h, end };
+      bottomBox = { left: bodyX - size.w / 2, top, w: size.w, h: size.h, end };
     }
 
     // With a belt the pieces are laid apart: top, a gap, the belt, a gap, then the
@@ -913,7 +923,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       beltBoxes = belts.map((belt) => {
         const w = Math.round(Math.max(300, Math.min(420, bottomBox.w * 1.02)));
         const h = Math.min(110, Math.round(w * belt.ratio));
-        const box = { piece: belt, left: centerX - w / 2, top: y, w, h };
+        const box = { piece: belt, left: bodyX - w / 2, top: y, w, h };
         y += h + 10;
         return box;
       });
@@ -923,7 +933,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       beltBoxes = belts.map((belt, i) => {
         const w = 380;
         const h = Math.min(110, Math.round(w * belt.ratio));
-        return { piece: belt, left: centerX - w / 2, top: meetY + i * (h + 10), w, h };
+        return { piece: belt, left: bodyX - w / 2, top: meetY + i * (h + 10), w, h };
       });
     }
 
@@ -949,11 +959,11 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       const totalW = pair.length * w + (pair.length - 1) * gapX;
       pair.forEach((shoe, i) => {
         const h = Math.min(220, Math.round(w * shoe.ratio));
-        shoeBoxes.push({ piece: shoe, left: centerX - totalW / 2 + i * (w + gapX), top: shoeTop, w, h });
+        shoeBoxes.push({ piece: shoe, left: bodyX - totalW / 2 + i * (w + gapX), top: shoeTop, w, h });
       });
       shoes.slice(2).forEach((shoe, i) => {
         const h = Math.min(200, Math.round(260 * shoe.ratio));
-        shoeBoxes.push({ piece: shoe, left: centerX - 130, top: shoeTop + 230 + i * 220, w: 260, h });
+        shoeBoxes.push({ piece: shoe, left: bodyX - 130, top: shoeTop + 230 + i * 220, w: 260, h });
       });
     }
 
