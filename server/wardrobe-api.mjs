@@ -932,10 +932,14 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       });
     }
 
+    // A belt always sits where the top meets the trousers: at the waist when the
+    // top is tucked in (or short), at the top's hem when it hangs over the trousers.
+    const topOut = innerBox && !isDressInner && bottomPiece && topStyle !== "tucked";
+    const meetY = topOut ? Math.max(waistY, innerBox.top + innerBox.h) : bottomBox ? bottomBox.top : innerBox ? innerBox.top + innerBox.h : waistY;
     const beltBoxes = belts.map((belt, i) => {
-      const w = 380;
+      const w = Math.round(Math.max(300, Math.min(420, (bottomBox?.w || innerBox?.w || 380) * 1.02)));
       const h = Math.min(110, Math.round(w * belt.ratio));
-      return { piece: belt, left: centerX - w / 2, top: waistY - Math.round(h / 2) + i * (h + 8), w, h };
+      return { piece: belt, left: centerX - w / 2, top: meetY - Math.round(h / 2) + i * (h + 8), w, h };
     });
 
     // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
@@ -950,8 +954,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       else middle.unshift([bottomPiece, bottomBox]);
     }
     draw.push(...middle);
-    for (const box of beltBoxes) draw.push([box.piece, box]);
     if (jacketPiece && jacketStyle !== "behind") for (const box of jacketBoxes) draw.push([jacketPiece, box]);
+    // Drawn last so nothing hides it
+    for (const box of beltBoxes) draw.push([box.piece, box]);
 
     for (const [piece, box] of draw) {
       await placeItem(piece, { targetW: box.w, targetH: box.h, left: box.left, top: box.top, blur: 7, opacity: 0.24, buffer: box.buffer, fit: box.fit || "contain" });
