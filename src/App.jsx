@@ -1075,7 +1075,7 @@ function AiSpendingSection() {
             <div className="ai-spend-tile">
               <span className="ai-spend-tile__label">נוצל בשנה האחרונה</span>
               <strong>{year === null ? "—" : formatUsd(year)}</strong>
-              <small>{year === null ? "אין נתונים מ-OpenAI" : `${formatIls(year)} · לפי OpenAI`}</small>
+              <small>{year === null ? (actual?.pending ? "יתעדכן בעוד כמה דקות" : "אין נתונים מ-OpenAI") : `${formatIls(year)} · לפי OpenAI`}</small>
             </div>
           </div>
 

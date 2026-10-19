@@ -1642,34 +1642,53 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   // Actual charges from OpenAI. Needs an Admin key (OPENAI_ADMIN_KEY), because
   // regular project keys cannot read billing. OpenAI has no API for the remaining
   // credit balance, so the balance is entered by the user and spending is subtracted.
-  async function openAICosts(startTime) {
+  // Daily charges for the past year from OpenAI's Costs API, fetched in one sweep
+  // and kept for 15 minutes. OpenAI allows only a few billing requests a minute,
+  // so the profile never asks it directly; a busy answer falls back to the saved copy.
+  const COSTS_CACHE_KEY = "billing/costs-cache.json";
+  const COSTS_FRESH_MS = 15 * 60 * 1000;
+  async function openAICostBuckets() {
     const adminKey = setting("OPENAI_ADMIN_KEY").trim();
     if (!adminKey) return null;
     const projectId = setting("OPENAI_PROJECT_ID").trim();
-    let total = 0;
-    let page = null;
-    for (let i = 0; i < 20; i++) {
-      const params = new URLSearchParams({ start_time: String(Math.floor(startTime)), bucket_width: "1d", limit: "180" });
-      if (projectId) params.append("project_ids", projectId);
-      if (page) params.set("page", page);
-      const response = await fetch(`${apiBaseUrl()}/organization/costs?${params}`, {
-        headers: { Authorization: `Bearer ${checkApiKey(adminKey, "OpenAI")}` },
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const reason = response.status === 401 || response.status === 403
-          ? "מפתח המנהל של OpenAI לא תקין או שאין לו הרשאה לנתוני חיוב."
-          : result.error?.message || `OpenAI החזיר שגיאה (${response.status})`;
-        throw new Error(reason);
+    const cached = await store.getJSON(COSTS_CACHE_KEY).catch(() => null);
+    const sameScope = cached && cached.projectId === (projectId || null);
+    if (sameScope && Date.now() - Date.parse(cached.fetchedAt) < COSTS_FRESH_MS) return cached;
+    try {
+      const startTime = Math.floor(Date.now() / 1000 - 364 * 24 * 3600);
+      const buckets = [];
+      let page = null;
+      for (let i = 0; i < 4; i++) {
+        const params = new URLSearchParams({ start_time: String(startTime), bucket_width: "1d", limit: "180" });
+        if (projectId) params.append("project_ids", projectId);
+        if (page) params.set("page", page);
+        const response = await fetch(`${apiBaseUrl()}/organization/costs?${params}`, {
+          headers: { Authorization: `Bearer ${checkApiKey(adminKey, "OpenAI")}` },
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw Object.assign(new Error(response.status === 401 || response.status === 403
+            ? "מפתח המנהל של OpenAI לא תקין או שאין לו הרשאה לנתוני חיוב."
+            : "busy"), { quiet: response.status !== 401 && response.status !== 403 });
+        }
+        for (const bucket of result.data || []) {
+          const usd = (bucket.results || []).reduce((total, row) => total + (Number(row.amount?.value) || 0), 0);
+          buckets.push({ start: bucket.start_time, usd });
+        }
+        if (!result.has_more || !result.next_page) break;
+        page = result.next_page;
       }
-      for (const bucket of result.data || []) {
-        for (const row of bucket.results || []) total += Number(row.amount?.value) || 0;
-      }
-      if (!result.has_more || !result.next_page) break;
-      page = result.next_page;
+      const fresh = { fetchedAt: new Date().toISOString(), projectId: projectId || null, buckets };
+      await store.setJSON(COSTS_CACHE_KEY, fresh).catch(() => {});
+      return fresh;
+    } catch (error) {
+      // OpenAI busy or unreachable: use the last copy, however old, without a message
+      if (sameScope) return { ...cached, stale: true };
+      if (error.quiet) return { buckets: null, pending: true };
+      throw error;
     }
-    return total;
   }
+  const sumSince = (buckets, startSeconds) => buckets.reduce((total, bucket) => total + (bucket.start >= startSeconds - 86400 + 1 ? bucket.usd : 0), 0);
 
   async function billingSummary() {
     const log = (await store.getJSON(SPEND_KEY).catch(() => null)) || { since: null, totalUsd: 0, months: {}, recent: [] };
@@ -1691,10 +1710,17 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
 
     if (summary.actual.configured) {
       try {
-        summary.actual.monthUsd = await openAICosts(monthStart);
-        // OpenAI keeps cost data for one year only
-        summary.actual.yearUsd = await openAICosts(Date.now() / 1000 - 364 * 24 * 3600);
-        if (balance?.setAt) summary.actual.sinceBalanceUsd = await openAICosts(Math.max(Date.parse(balance.setAt) / 1000, Date.now() / 1000 - 364 * 24 * 3600));
+        const costs = await openAICostBuckets();
+        if (costs?.buckets) {
+          const buckets = costs.buckets;
+          summary.actual.monthUsd = buckets.reduce((total, bucket) => total + (bucket.start >= monthStart ? bucket.usd : 0), 0);
+          // OpenAI keeps cost data for one year only
+          summary.actual.yearUsd = buckets.reduce((total, bucket) => total + bucket.usd, 0);
+          if (balance?.setAt) summary.actual.sinceBalanceUsd = sumSince(buckets, Date.parse(balance.setAt) / 1000);
+          summary.actual.updatedAt = costs.fetchedAt;
+        } else if (costs?.pending) {
+          summary.actual.pending = true;
+        }
       } catch (error) {
         summary.actual.error = error.message;
       }
