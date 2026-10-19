@@ -624,3 +624,24 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .body-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .body-field .account-input { width: 100%; min-width: 0; text-align: center; }
 @media (max-width: 420px) { .body-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Light pieces stay visible: every cut-out garment gets a soft outline-like
+   shadow along its own edges, and white/cream pieces sit on a slightly deeper card */
+.gallery-item__main > img:first-child,
+.gallery-item__main > picture img,
+.lb-tile__img img,
+.lb-chip img,
+.look-piece__img img,
+.look-tile__thumb,
+.selected-piece-badge img,
+.gpt-helper__photo img,
+.luggage-item-card__img-wrap img {
+  filter: drop-shadow(0 0 0.6px rgba(46, 42, 38, .45)) drop-shadow(0 3px 8px rgba(46, 42, 38, .12));
+}
+.look-tile.is-photo .gallery-item__main > img:first-child,
+.look-tile.is-photo .gallery-item__main picture img,
+.luggage-look-card .luggage-item-card__img-wrap img { filter: none; }
+.gallery-item.is-light .gallery-item__main { background: #ebe4da; }
+@media (hover: hover) and (pointer: fine) {
+  .gallery-item.is-light .gallery-item__main:hover { background: #e6ded3; }
+}

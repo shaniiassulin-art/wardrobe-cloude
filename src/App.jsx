@@ -10,6 +10,7 @@ import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilter
 import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
+import { colorFamily } from "./colors.js";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
@@ -214,9 +215,11 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
   const tilt = useMemo(() => tiltHandlers(), []);
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
   const hasModeled = Boolean(item.modeledImage);
+  // White and cream pieces get a slightly darker card so they stand out
+  const isLight = ["white", "beige"].includes(colorFamily(item.color));
 
   return (
-    <div className={`gallery-item${selected ? " selected" : ""}${checked ? " is-checked" : ""}${hasModeled ? " has-modeled" : ""}${showModeled ? " show-modeled" : ""}`}>
+    <div className={`gallery-item${isLight ? " is-light" : ""}${selected ? " selected" : ""}${checked ? " is-checked" : ""}${hasModeled ? " has-modeled" : ""}${showModeled ? " show-modeled" : ""}`}>
       <button
         className="gallery-item__main"
         type="button"
