@@ -641,7 +641,13 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .look-tile.is-photo .gallery-item__main > img:first-child,
 .look-tile.is-photo .gallery-item__main picture img,
 .luggage-look-card .luggage-item-card__img-wrap img { filter: none; }
-.gallery-item.is-light .gallery-item__main { background: #ebe4da; }
+/* One card colour for every piece, a shade deeper than the page so white and
+   cream pieces stand out as clearly as the rest */
+.gallery-item__main { background: #ece5db; }
 @media (hover: hover) and (pointer: fine) {
-  .gallery-item.is-light .gallery-item__main:hover { background: #e6ded3; }
+  .gallery-item__main:hover { background: #e7dfd4; }
 }
+.look-tile.is-photo .gallery-item__main { background: transparent; }
+
+.item-sheet__made-with { margin: -4px 0 14px; font-size: 12px; color: var(--muted); }
+.item-sheet__made-with strong { color: var(--ink); font-weight: 600; }

@@ -10,7 +10,6 @@ import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilter
 import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
-import { colorFamily } from "./colors.js";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
@@ -215,11 +214,9 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
   const tilt = useMemo(() => tiltHandlers(), []);
   const type = TYPE_MAP[item.part]?.singular || "פריט מלתחה";
   const hasModeled = Boolean(item.modeledImage);
-  // White and cream pieces get a slightly darker card so they stand out
-  const isLight = ["white", "beige"].includes(colorFamily(item.color));
 
   return (
-    <div className={`gallery-item${isLight ? " is-light" : ""}${selected ? " selected" : ""}${checked ? " is-checked" : ""}${hasModeled ? " has-modeled" : ""}${showModeled ? " show-modeled" : ""}`}>
+    <div className={`gallery-item${selected ? " selected" : ""}${checked ? " is-checked" : ""}${hasModeled ? " has-modeled" : ""}${showModeled ? " show-modeled" : ""}`}>
       <button
         className="gallery-item__main"
         type="button"
@@ -239,7 +236,6 @@ function GalleryItem({ item, selected, selectMode, checked, onOpen, onToggleSele
         />
         {hasModeled && <img className="gallery-item__modeled" src={thumbUrl(item.modeledImage, 480)} onError={imageFallback(item.modeledImage)} alt="" loading="lazy" decoding="async" />}
         {selectMode && <span className="gallery-item__check" aria-hidden="true">{checked && <Check size={16} weight="bold" />}</span>}
-        {qualityLabel(item.catalogQuality) && !selectMode && <span className="gallery-item__quality">{qualityLabel(item.catalogQuality)}</span>}
       </button>
       {hasModeled && !selectMode && (
         <button type="button" className="gallery-item__swap" onClick={() => setShowModeled((value) => !value)} aria-pressed={showModeled}>
@@ -675,7 +671,7 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
     <aside className={`viewer item-sheet${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="פריט מלתחה נבחר">
       <header className="item-sheet__header">
         <div>
-          <p className="item-sheet__eyebrow">{[TYPE_MAP[draft.part]?.singular || "פריט", item.brand, qualityLabel(item.catalogQuality) && `נוצר: ${qualityLabel(item.catalogQuality)}`].filter(Boolean).join(" · ")}</p>
+          <p className="item-sheet__eyebrow">{[TYPE_MAP[draft.part]?.singular || "פריט", item.brand].filter(Boolean).join(" · ")}</p>
           <h2>{draft.name || type}</h2>
         </div>
         <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="סגור" ref={closeButtonRef}>
@@ -851,6 +847,9 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
 
       <section className="item-sheet__section" aria-labelledby="item-details-title">
         <h3 id="item-details-title">פרטי הפריט</h3>
+        {qualityLabel(item.catalogQuality) && (
+          <p className="item-sheet__made-with">תמונת הבגד נוצרה ב: <strong>{qualityLabel(item.catalogQuality)}</strong></p>
+        )}
         <ItemEditor
           draft={draft}
           setDraft={setDraft}
