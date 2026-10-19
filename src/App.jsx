@@ -1623,7 +1623,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
           }
         : {
-            name: lookName.trim() || selectedItems.map((i) => i.name).join(" + "),
+            name: lookName.trim() || undefined,
             garmentIds: selectedIds,
             notes: outfitNotes.trim() || undefined,
             mode: outfitMode,
@@ -1862,14 +1862,14 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                 ]}
                 uploadLabel="העלאת הלוק שיצרתי"
                 onUpload={async (imageDataUrl) => {
-                  setGeneratedLook({ image: imageDataUrl, name: lookName.trim() || selectedItems.map((i) => i.name).join(" + "), mode: "modeled", uploaded: true });
+                  setGeneratedLook({ image: imageDataUrl, name: lookName.trim() || "", mode: "modeled", uploaded: true });
                   setJustCreated(Date.now());
                   requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
                 }}
               />
             )}
             <label className="lb-label" htmlFor="look-builder-name">שם הלוק <span>אופציונלי</span></label>
-            <input id="look-builder-name" className="lb-input" type="text" value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder={selectedItems.length ? selectedItems.map((i) => i.name).slice(0, 3).join(" + ") : "למשל: ערב עם חברות"} />
+            <input id="look-builder-name" className="lb-input" type="text" value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder="יינתן שם קצר אוטומטית, למשל: ערב עם חברות" />
           </section>
         </div>
 

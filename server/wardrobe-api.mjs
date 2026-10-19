@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { COLOR_FAMILIES, colorFamily } from "../src/colors.js";
 import path from "node:path";
 import sharp from "sharp";
 
@@ -630,6 +631,26 @@ const bodyLine = (body = {}) => {
   if (body.bust && body.waist && body.hips) parts.push(`with body measurements ${body.bust}-${body.waist}-${body.hips} cm (bust-waist-hips)`);
   return parts.length ? `\nBody: The person is ${parts.join(" ")}. Keep these real proportions; do not make the body thinner, curvier or taller than this.` : "";
 };
+
+// A short Hebrew default name for a look, from the colours of its main pieces,
+// e.g. "לוק צהוב ושחור". A number is added when the name is already taken.
+const LOOK_PART_ORDER = ["dress", "wholebody", "upperbody", "top", "lowerbody", "bottom", "wholebody_up", "outerwear", "jacket"];
+export function defaultLookName(garments = [], takenNames = []) {
+  const main = [...garments]
+    .filter((g) => LOOK_PART_ORDER.includes(g.part))
+    .sort((a, b) => LOOK_PART_ORDER.indexOf(a.part) - LOOK_PART_ORDER.indexOf(b.part));
+  const labels = [];
+  for (const garment of (main.length ? main : garments)) {
+    const family = COLOR_FAMILIES.find((entry) => entry.id === colorFamily(garment.color));
+    if (family && !labels.includes(family.label)) labels.push(family.label);
+    if (labels.length === 2) break;
+  }
+  const base = labels.length === 2 ? `לוק ${labels[0]} ו${labels[1]}` : labels.length ? `לוק ${labels[0]}` : "לוק חדש";
+  const taken = new Set(takenNames.map((name) => String(name || "").trim()));
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 500; n++) if (!taken.has(`${base} ${n}`)) return `${base} ${n}`;
+  return base;
+}
 
 // Cuts a garment photo down the middle into its left and right halves
 async function splitDownTheMiddle(buffer) {
@@ -2020,7 +2041,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
 
     if (!selectedGarments.length) throw new Error("אנא בחרו לפחות פריט אחד מהמלתחה ליצירת לוק.");
 
-    const outfitName = name || selectedGarments.map((g) => g.name).join(" + ") || "לוק מעוצב";
+    const outfitName = (typeof name === "string" && name.trim()) || defaultLookName(selectedGarments, (await loadOutfits(wardrobeId)).map((o) => o.name));
     const backdrop = settingDirection || "a warm, natural daylight setting with minimalist architecture";
 
     let bytes;
@@ -2149,7 +2170,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
 
     const outfitRecord = {
       id: outfitId,
-      name: outfitData.name || selectedGarments.map((g) => g.name).join(" + ") || "Custom Look",
+      name: (typeof outfitData.name === "string" && outfitData.name.trim()) || defaultLookName(selectedGarments, (await loadOutfits(wardrobeId)).filter((o) => o.id !== outfitId).map((o) => o.name)),
       occasion: outfitData.occasion || ["casual"],
       garmentIds: outfitData.garmentIds,
       garments: selectedGarments.map((g) => ({
@@ -2189,10 +2210,11 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
 
     const hasBase = (tops.length > 0 && bottoms.length > 0) || dresses.length > 0 || tops.length > 0;
     if (!hasBase) {
-      throw Object.assign(new Error("You need tops and bottoms (or dresses) in your wardrobe to auto-generate outfits."), { status: 400 });
+      throw Object.assign(new Error("כדי ליצור לוקים אוטומטית צריך בארון חולצות ומכנסיים, או שמלות."), { status: 400 });
     }
 
     const existingOutfits = await loadOutfits(wardrobeId);
+    const existingNames = existingOutfits.map((o) => o.name);
     const existingCombos = new Set(
       existingOutfits.map((o) => [...(o.garmentIds || [])].sort().join(","))
     );
@@ -2265,9 +2287,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
         combo.forEach((g) => markUsed(g.id));
         const primary = combo[0];
         const secondary = combo[1];
-        const outfitTitle = secondary
-          ? `${primary.name} + ${secondary.name}`
-          : `${primary.name} Look`;
+        const outfitTitle = defaultLookName(combo, [...existingNames, ...curatedCombos.map((c) => c.name)]);
 
         curatedCombos.push({
           key: comboKey,
@@ -3058,7 +3078,7 @@ Respond in strict JSON format:
         const records = await loadImported(resolveWardrobeId(request, url));
         const selected = (Array.isArray(input.garmentIds) ? input.garmentIds : []).map((id) => records.find((item) => item.id === id)).filter(Boolean);
         if (!selected.length) return json(400, { error: "יש לבחור לפחות פריט אחד." });
-        const outfitName = String(input.name || "").trim() || selected.map((g) => g.name).join(" + ");
+        const outfitName = String(input.name || "").trim() || defaultLookName(selected);
         return json(200, { prompt: buildLookPrompt(selected, { outfitName, backdrop: "a warm, natural daylight setting with minimalist architecture", notes: String(input.notes || "").slice(0, 600), body: await bodyOf(resolveWardrobeId(request, url)) }) });
       }
       const openVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/open-version$/i);
