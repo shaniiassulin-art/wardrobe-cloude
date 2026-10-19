@@ -1027,7 +1027,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     for (const { piece, style } of layered.filter((layer) => layer.style !== "open")) {
       const size = sizeLayer(piece, style, prevW);
       const rowRight = rowBoxes.length ? Math.max(...rowBoxes.map((box) => box.left + box.w)) : centerX - size.w / 2;
-      const overlap = rowBoxes.length ? Math.round(Math.min(size.w, prevW) * (style === "closed" ? 0.1 : 0.3)) : 0;
+      const overlap = rowBoxes.length ? Math.round(Math.min(size.w, prevW) * (style === "closed" ? 0.5 : 0.3)) : 0;
       const box = { left: rowRight - overlap, top: collarY + (rowBoxes.length ? 8 : 0), w: size.w, h: size.h, fit: "fill" };
       if (style === "behind") behindDraws.unshift([piece, box]);
       else closedDraws.push([piece, box]);
