@@ -651,3 +651,11 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 
 .item-sheet__made-with { margin: -4px 0 14px; font-size: 12px; color: var(--muted); }
 .item-sheet__made-with strong { color: var(--ink); font-weight: 600; }
+
+/* Item window: the garment sits on the same card colour and soft edge as in the wardrobe */
+.item-sheet__media .viewer-art { background: #ece5db; }
+.item-sheet__media .viewer-art img { filter: drop-shadow(0 0 0.6px rgba(46, 42, 38, .45)) drop-shadow(0 3px 8px rgba(46, 42, 38, .12)); }
+.item-versions__compare figure button { background: #ece5db; }
+.item-versions__compare figure img,
+.item-open__thumb img { filter: drop-shadow(0 0 0.6px rgba(46, 42, 38, .45)) drop-shadow(0 3px 8px rgba(46, 42, 38, .12)); }
+.item-open__thumb { background: #ece5db; }
