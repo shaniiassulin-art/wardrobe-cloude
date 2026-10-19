@@ -1008,12 +1008,15 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     // Outer layers, each laid open (the layers under it show between its fronts),
     // closed (over the layer under it), or beside the stack in front of / behind it
     const aboveDraws = [];
+    const closedDraws = []; // closed layers, drawn under every open one
     const behindDraws = [];
     const upperBoxes = innerBox && !innerDraws.length ? [innerBox] : [...innerDraws];
     // A short inner top (a crop) does not make the layers over it smaller
     let prevW = Math.max(innerBox ? innerBox.w : 0, Math.round(waistW * bustToHips));
     let prevGap = 0;
     let besideUsed = false;
+    let diagonalUsed = false;
+    let lastSingle = innerBox && !innerDraws.length ? innerBox : null;
     for (let index = 1; index < orderedUpper.length; index++) {
       const piece = orderedUpper[index];
       const style = styleOf(piece, index);
@@ -1028,9 +1031,16 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
         prevGap = gap;
         aboveDraws.push(...boxes.map((box) => [piece, box]));
       } else if (style === "closed") {
-        boxes = [{ left: centerX - size.w / 2, top: collarY + 6, w: size.w, h: size.h, fit: "fill" }];
+        // Closed over another layer: laid on a diagonal (down and to the side) so the
+        // layer under it still shows at the collar and along one side
+        const under = lastSingle || { left: centerX - prevW / 2, top: collarY, w: prevW };
+        const dx = Math.round(under.w * 0.16);
+        const dy = Math.round(T * 0.14);
+        boxes = [{ left: under.left + under.w / 2 - size.w / 2 + dx, top: under.top + dy, w: size.w, h: size.h, fit: "fill" }];
+        besideUsed = true;
+        diagonalUsed = true;
         prevGap = 0;
-        aboveDraws.push([piece, boxes[0]]);
+        closedDraws.push([piece, boxes[0]]);
       } else {
         // Beside the stack with a small overlap, so every layer stays recognisable
         besideUsed = true;
@@ -1041,6 +1051,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
         else aboveDraws.push([piece, boxes[0]]);
       }
       upperBoxes.push(...boxes);
+      lastSingle = boxes.length === 1 && style !== "open" ? boxes[0] : lastSingle;
       prevW = size.w;
     }
     // Pieces laid beside each other are centred as a group
@@ -1053,7 +1064,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     const jacketHemY = upperBoxes.length ? Math.max(...upperBoxes.map((box) => box.top + box.h)) : null;
     const jacketPiece = orderedUpper.length > 1 ? orderedUpper[orderedUpper.length - 1] : null;
     // Trousers, belt and shoes line up under the top (it may sit off-centre beside a jacket)
-    const bodyX = innerBox ? innerBox.left + innerBox.w / 2 : centerX;
+    // (with layers laid on a diagonal, under the middle of the whole stack)
+    const bodyX = innerBox && !diagonalUsed ? innerBox.left + innerBox.w / 2 : centerX;
 
     let bottomBox = null;
     if (bottomPiece) {
@@ -1146,6 +1158,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       else middle.unshift([bottomPiece, bottomBox]);
     }
     draw.push(...middle);
+    // Closed layers first, then every open layer over everything, fronts at the sides
+    draw.push(...closedDraws);
     draw.push(...aboveDraws);
     // Drawn last so nothing hides it
     for (const box of beltBoxes) draw.push([box.piece, box]);
