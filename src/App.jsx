@@ -1500,7 +1500,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const isUpper = (item) => TOP_PARTS.includes(item.part) || OUTER_PARTS.includes(item.part) || item.part === "dress" || item.part === "wholebody";
   const layerRank = (item) => (item.part === "dress" || item.part === "wholebody" ? 0 : OUTER_PARTS.includes(item.part) ? 3 : item.fit?.buttoned ? 2 : 1);
   const canOpenLayer = (item) => OUTER_PARTS.includes(item.part) || Boolean(item.fit?.buttoned);
-  const defaultLayerStyle = (item) => (OUTER_PARTS.includes(item.part) ? "open" : item.fit?.buttoned ? "closed" : "front");
+  const defaultLayerStyle = (item) => (OUTER_PARTS.includes(item.part) ? "open" : "closed");
   const [layerOrder, setLayerOrder] = useState(() => initialStyling?.layers?.map((layer) => layer.id) || []);
   const [layerStyles, setLayerStyles] = useState(() => Object.fromEntries((initialStyling?.layers || []).map((layer) => [layer.id, layer.style])));
   const upperItems = useMemo(() => {
@@ -1512,6 +1512,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const layersPayload = upperItems.length >= 2
     ? upperItems.map((item, index) => ({ id: item.id, style: index === 0 ? "closed" : (layerStyles[item.id] || defaultLayerStyle(item)) }))
     : null;
+  // Set when the arrangement changed after the flat lay was made
+  const [pendingChanges, setPendingChanges] = useState(false);
   // Only the choices that apply to the pieces picked right now are sent
   const activeStyling = useMemo(() => {
     const next = {};
@@ -1612,7 +1614,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "שגיאה ביצירת לוק");
-      setGeneratedLook({ ...data, mode: data.mode || outfitMode });
+      setGeneratedLook({ ...data, mode: data.mode || outfitMode, usedStyling: outfitMode === "flatlay" ? (stylingOverride || activeStyling) : undefined });
+      setPendingChanges(false);
       setJustCreated(Date.now());
       requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
       if (!lookName.trim() && data.name) {
@@ -1639,7 +1642,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             name: lookName.trim() || generatedLook.name,
             notes: outfitNotes.trim() || generatedLook.notes,
             mode: outfitMode,
-            styling: outfitMode === "flatlay" ? activeStyling : undefined,
+            styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
           }
         : {
@@ -1647,7 +1650,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             garmentIds: selectedIds,
             notes: outfitNotes.trim() || undefined,
             mode: outfitMode,
-            styling: outfitMode === "flatlay" ? activeStyling : undefined,
+            styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             setting: "a warm, natural daylight setting with minimalist architecture",
             image: selectedItems[0]?.thumbnail || selectedItems[0]?.image || "",
           };
@@ -1678,14 +1681,11 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   ];
   const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned || upperItems.length >= 2);
   const manyLayers = upperItems.length >= 2;
+  // Arrangement changes are only shown when "שוב" is pressed
   const relayer = (order, styles) => {
     setLayerOrder(order);
     setLayerStyles(styles);
-    if (generatedLook && outfitMode === "flatlay") {
-      const layers = order.map((id) => upperItems.find((item) => item.id === id)).filter(Boolean)
-        .map((item, index) => ({ id: item.id, style: index === 0 ? "closed" : (styles[item.id] || defaultLayerStyle(item)) }));
-      handleGenerate({ ...activeStyling, layers });
-    }
+    if (generatedLook) setPendingChanges(true);
   };
   const moveLayer = (index, step) => {
     const order = upperItems.map((item) => item.id);
@@ -1696,7 +1696,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   };
   const restyle = (key, value) => {
     setStyling((current) => ({ ...current, [key]: value }));
-    if (generatedLook) handleGenerate({ ...activeStyling, [key]: value });
+    if (generatedLook) setPendingChanges(true);
   };
   const switchMode = (mode) => {
     if (mode === outfitMode) return;
@@ -1769,8 +1769,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                       setSettingsSaving(true);
                       try {
                         await onUpdateItem?.({ ...item, fit });
-                        // Show the change straight away in a flat lay
-                        if (generatedLook && outfitMode === "flatlay") handleGenerate();
+                        // Shown in the flat lay when "שוב" is pressed
+                        if (generatedLook && outfitMode === "flatlay") setPendingChanges(true);
                       } catch {
                         setBuilderError("לא ניתן לשמור את ההגדרה כרגע");
                       } finally {
@@ -1846,9 +1846,10 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   <p className="lb-layers__hint">סדר השכבות על הגוף, מהקרובה לגוף ועד החיצונית, ואיך כל שכבה מונחת</p>
                   {upperItems.map((item, index) => {
                     const style = index === 0 ? null : (layerStyles[item.id] || defaultLayerStyle(item));
-                    const options = canOpenLayer(item)
-                      ? [{ id: "open", label: "פתוחה" }, { id: "closed", label: "סגורה" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }]
-                      : [{ id: "closed", label: "מעל" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }];
+                    // Open (fronts at the sides) or closed (laid half over the layer under it).
+                    // What lies on what is decided by the order above.
+                    const options = canOpenLayer(item) ? [{ id: "open", label: "פתוחה" }, { id: "closed", label: "סגורה" }] : [];
+                    const shown = style === "open" && !canOpenLayer(item) ? "closed" : style === "open" ? "open" : "closed";
                     return (
                       <div key={item.id} className="lb-layer">
                         <div className="lb-layer__row">
@@ -1858,10 +1859,10 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                           <button type="button" disabled={generating || index === 0} onClick={() => moveLayer(index, -1)} aria-label={`להזיז את ${item.name} פנימה`}><ArrowUp size={14} /></button>
                           <button type="button" disabled={generating || index === upperItems.length - 1} onClick={() => moveLayer(index, 1)} aria-label={`להזיז את ${item.name} החוצה`}><ArrowDown size={14} /></button>
                         </div>
-                        {index > 0 && (
+                        {index > 0 && options.length > 0 && (
                           <div className="styling-choice__options lb-layer__styles" role="radiogroup" aria-label={`איך ${item.name} מונחת`}>
                             {options.map((option) => (
-                              <button key={option.id} type="button" role="radio" aria-checked={style === option.id} className={style === option.id ? "is-on" : ""} disabled={generating}
+                              <button key={option.id} type="button" role="radio" aria-checked={shown === option.id} className={shown === option.id ? "is-on" : ""} disabled={generating}
                                 onClick={() => relayer(upperItems.map((entry) => entry.id), { ...layerStyles, [item.id]: option.id })}>
                                 {option.label}
                               </button>
@@ -1878,7 +1879,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   label="ז'קט"
                   value={styling.jacket}
                   disabled={generating}
-                  options={[{ id: "open", label: "פתוח" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }]}
+                  options={[{ id: "open", label: "פתוח" }, { id: "closed", label: "סגור" }]}
                   onChange={(value) => restyle("jacket", value)}
                 />
               )}
@@ -1945,6 +1946,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
         <footer className="lb-footer">
           {builderError && <p className="lb-error" role="alert">{builderError}</p>}
           {paidUnsaved && !builderError && <p className="lb-paid" role="status">הלוק כבר שולם. שמרי אותו כדי לא לאבד אותו.</p>}
+          {pendingChanges && generatedLook && outfitMode === "flatlay" && !builderError && <p className="lb-paid" role="status">יש שינויים בסידור. לחצי "שוב" כדי לראות אותם בפריסה.</p>}
           <div className="lb-footer__actions">
             <button className="lb-button is-ghost" type="button" disabled={generating || saving} onClick={requestClose}>ביטול</button>
             {generatedLook && (

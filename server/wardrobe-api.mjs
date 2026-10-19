@@ -924,6 +924,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       else style = index === 0 ? "closed" : "front";
     }
     if (style === "open" && !canOpen(e)) style = "closed";
+    // "In front" / "behind" are no longer offered: the order of the layers decides
+    // what lies on what, so older looks that used them are laid as closed
+    if (style === "front" || style === "behind") style = "closed";
     return style;
   };
   const simpleColumn = orderedUpper.length <= 5 && dresses.length <= 1 && bottoms.length <= 1
