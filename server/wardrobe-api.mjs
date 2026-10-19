@@ -605,7 +605,7 @@ const ANKLE = 3.0;
 export function normalizeFit(fit = {}) {
   const length = typeof fit?.length === "string" ? fit.length : null;
   const known = Object.values(GARMENT_FIT).some((table) => length in table);
-  return known ? { length } : {};
+  return { ...(known ? { length } : {}), ...(fit?.oversize === true ? { oversize: true } : {}) };
 }
 
 // Cuts a garment photo down the middle into its left and right halves
@@ -848,11 +848,12 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     // Size a piece so it reaches `hem` (torso units below its start). Garments are
     // about as wide as the body whatever their length, so the width stays near
     // `baseW` and the photo's own proportions decide the rest.
-    const sizeTo = (piece, startUnits, hemUnits, baseW, ratio = piece.ratio) => {
+    const sizeTo = (piece, startUnits, hemUnits, baseW, ratio = piece.ratio, [minF, maxF] = [0.82, 1.2]) => {
       const wanted = Math.max(60, (hemUnits - startUnits) * T) / ratio;
-      const w = Math.max(baseW * 0.82, Math.min(baseW * 1.2, wanted));
+      const w = Math.max(baseW * minF, Math.min(baseW * maxF, wanted));
       return { w: Math.round(w), h: Math.round(w * ratio) };
     };
+    const isOversize = (piece) => piece?.item?.fit?.oversize === true;
 
     const jacketPiece = outerwear[0] || null;
     const innerPiece = tops[0] || dresses[0] || null;
@@ -861,12 +862,27 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
     const isSkirt = bottomPiece && /skirt|חצאית/.test(bottomPiece.nameLower);
     const draw = []; // [piece, box, extra] in drawing order, first is lowest
 
+    // Trousers are sized first: a regular top is as wide as their waist, an
+    // oversized one clearly wider
+    const bottomEnd = bottomPiece ? lengthOf(bottomPiece, "bottom", isSkirt ? 2.25 : ANKLE) : null;
+    const bottomSize = bottomPiece ? sizeTo(bottomPiece, 1, bottomEnd, isOversize(bottomPiece) ? 440 : 360) : null;
+    const waistW = bottomSize ? bottomSize.w : 360;
+
     let innerBox = null;
     if (innerPiece) {
       const hem = isDressInner ? lengthOf(innerPiece, "dress", 2.3) : lengthOf(innerPiece, "top", 1.4);
-      const size = sizeTo(innerPiece, 0, hem, isDressInner ? 420 : 400);
-      innerBox = { left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h };
+      const big = isOversize(innerPiece);
+      const size = isDressInner
+        ? sizeTo(innerPiece, 0, hem, big ? 500 : 420)
+        : sizeTo(innerPiece, 0, hem, waistW * (big ? 1.32 : 1.0), innerPiece.ratio, big ? [0.95, 1.12] : [0.92, 1.06]);
+      // Keep the hem at the chosen length: a short photo starts a little lower
+      const drop = bottomPiece && !isDressInner ? Math.max(0, Math.round(hem * T - size.h)) : 0;
+      innerBox = { left: centerX - size.w / 2, top: shoulderY + Math.min(drop, Math.round(T * 0.45)), w: size.w, h: size.h };
     }
+    // The jacket's collar lines up with the top's
+    const collarY = innerBox ? innerBox.top : shoulderY;
+    // A jacket is a little wider than what it is worn over; an oversized one more so
+    const jacketBase = (innerBox ? innerBox.w : waistW) * (isOversize(jacketPiece) ? 1.3 : 1.1);
 
     let jacketBoxes = [];
     let jacketHemY = null;
@@ -874,32 +890,32 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       const hem = lengthOf(jacketPiece, "jacket", 1.3);
       const style = innerPiece ? (jacket || "open") : "front";
       if (style === "open" && innerPiece && jacketPiece.openBuffer) {
-        const size = sizeTo(jacketPiece, 0, hem, 480, jacketPiece.openRatio);
-        jacketBoxes = [{ left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h, buffer: jacketPiece.openBuffer }];
-        jacketHemY = shoulderY + size.h;
+        const size = sizeTo(jacketPiece, 0, hem, jacketBase * 1.1, jacketPiece.openRatio, [0.9, 1.15]);
+        jacketBoxes = [{ left: centerX - size.w / 2, top: collarY, w: size.w, h: size.h, buffer: jacketPiece.openBuffer }];
+        jacketHemY = collarY + size.h;
       } else if (style === "open" && innerPiece) {
         const halves = await splitDownTheMiddle(jacketPiece.buffer);
-        const size = sizeTo(jacketPiece, 0, hem, 440, halves.ratio);
+        const size = sizeTo(jacketPiece, 0, hem, jacketBase, halves.ratio, [0.9, 1.15]);
         const halfW = Math.round(size.w / 2);
         const gap = Math.round((innerBox?.w || 300) * 0.42);
         jacketBoxes = [
-          { left: centerX - gap / 2 - halfW, top: shoulderY, w: halfW, h: size.h, buffer: halves.left, fit: "fill" },
-          { left: centerX + gap / 2, top: shoulderY, w: halfW, h: size.h, buffer: halves.right, fit: "fill" },
+          { left: centerX - gap / 2 - halfW, top: collarY, w: halfW, h: size.h, buffer: halves.left, fit: "fill" },
+          { left: centerX + gap / 2, top: collarY, w: halfW, h: size.h, buffer: halves.right, fit: "fill" },
         ];
-        jacketHemY = shoulderY + size.h;
+        jacketHemY = collarY + size.h;
       } else if (innerPiece) {
         // Whole jacket in front of or behind the top: laid beside it with a small
         // overlap, so both pieces stay fully recognisable
-        const size = sizeTo(jacketPiece, 0, hem, 420);
+        const size = sizeTo(jacketPiece, 0, hem, jacketBase, jacketPiece.ratio, [0.9, 1.15]);
         const overlap = Math.round(Math.min(size.w, innerBox.w) * 0.3);
         const total = innerBox.w + size.w - overlap;
         innerBox.left = Math.round(centerX - total / 2);
-        jacketBoxes = [{ left: innerBox.left + innerBox.w - overlap, top: shoulderY + 10, w: size.w, h: size.h }];
-        jacketHemY = shoulderY + 10 + size.h;
+        jacketBoxes = [{ left: innerBox.left + innerBox.w - overlap, top: collarY + 10, w: size.w, h: size.h }];
+        jacketHemY = collarY + 10 + size.h;
       } else {
-        const size = sizeTo(jacketPiece, 0, hem, 440);
-        jacketBoxes = [{ left: centerX - size.w / 2, top: shoulderY, w: size.w, h: size.h }];
-        jacketHemY = shoulderY + size.h;
+        const size = sizeTo(jacketPiece, 0, hem, jacketBase, jacketPiece.ratio, [0.9, 1.15]);
+        jacketBoxes = [{ left: centerX - size.w / 2, top: collarY, w: size.w, h: size.h }];
+        jacketHemY = collarY + size.h;
       }
     }
     // Trousers, belt and shoes line up under the top (it may sit off-centre beside a jacket)
@@ -907,10 +923,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
 
     let bottomBox = null;
     if (bottomPiece) {
-      const end = lengthOf(bottomPiece, "bottom", isSkirt ? 2.25 : ANKLE);
-      const size = sizeTo(bottomPiece, 1, end, 380);
       const top = innerPiece || jacketPiece ? waistY : shoulderY;
-      bottomBox = { left: bodyX - size.w / 2, top, w: size.w, h: size.h, end };
+      bottomBox = { left: bodyX - bottomSize.w / 2, top, w: bottomSize.w, h: bottomSize.h, end: bottomEnd };
     }
 
     // With a belt the pieces are laid apart: top, a gap, the belt, a gap, then the

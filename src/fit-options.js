@@ -41,5 +41,9 @@ export function lengthOptions(part) {
 // Keeps a length only if it is one of the choices for this kind of garment
 export function fitForPart(fit, part) {
   const choices = lengthOptions(part);
-  return choices && choices.options.some((option) => option.id === fit?.length) ? { length: fit.length } : {};
+  if (!choices) return {};
+  return {
+    ...(choices.options.some((option) => option.id === fit?.length) ? { length: fit.length } : {}),
+    ...(fit?.oversize === true ? { oversize: true } : {}),
+  };
 }

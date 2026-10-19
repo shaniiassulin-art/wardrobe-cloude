@@ -16,7 +16,22 @@ export function FitPicker({ part, fit, onChange, compact = false }) {
             role="radio"
             aria-checked={current === option.id}
             className={current === option.id ? "is-on" : ""}
-            onClick={() => onChange(current === option.id ? {} : { length: option.id })}
+            onClick={() => onChange({ ...(fit?.oversize ? { oversize: true } : {}), ...(current === option.id ? {} : { length: option.id }) })}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <span className="fit-picker__title">גזרה</span>
+      <div className="fit-picker__options" role="radiogroup" aria-label="גזרה">
+        {[{ id: false, label: "רגילה" }, { id: true, label: "אוברסייז" }].map((option) => (
+          <button
+            key={String(option.id)}
+            type="button"
+            role="radio"
+            aria-checked={Boolean(fit?.oversize) === option.id}
+            className={Boolean(fit?.oversize) === option.id ? "is-on" : ""}
+            onClick={() => onChange({ ...(current ? { length: current } : {}), ...(option.id ? { oversize: true } : {}) })}
           >
             {option.label}
           </button>

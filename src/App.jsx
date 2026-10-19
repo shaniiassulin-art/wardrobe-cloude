@@ -543,7 +543,7 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
       color: draft.color?.toLowerCase() || null,
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
-      fit: fitForPart(draft.fit, draft.part).length || null,
+      fit: JSON.stringify(fitForPart(draft.fit, draft.part)),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       brand: (item.brand || "").trim(),
@@ -551,7 +551,7 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
       color: item.color?.toLowerCase() || null,
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
-      fit: fitForPart(item.fit, item.part).length || null,
+      fit: JSON.stringify(fitForPart(item.fit, item.part)),
     });
   }, [draft, item]);
 
