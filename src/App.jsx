@@ -1893,7 +1893,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
               )}
               {(hasTop || hasOuter) && hasBottom && (
                 <StylingChoice
-                  label="חולצה"
+                  label={upperItems && upperItems.length > 1 ? "שכבה ראשונה" : "חולצה"}
                   value={styling.top}
                   disabled={generating}
                   options={[{ id: "out", label: "בחוץ" }, { id: "tucked", label: "בפנים" }]}

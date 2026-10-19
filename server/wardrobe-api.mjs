@@ -981,8 +981,16 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
 
     let innerBox = null;
     const innerDraws = []; // the innermost layer when it is not a single box (open on its own)
+    // In or out is about the first layer only (the one on the body); every layer
+    // over it always lies over the trousers.
+    const tuckInner = innerIsTop && Boolean(bottomPiece) && topStyle === "tucked";
+    const outInner = innerIsTop && Boolean(bottomPiece) && !tuckInner;
     if (innerPiece) {
-      const hem = hemOf(innerPiece);
+      let hem = hemOf(innerPiece);
+      // Without a belt: tucked, its hem goes under the waistband (the trousers lie
+      // over it); out, it hangs over the waistband even when it is cut to the trouser line
+      if (!laidApart && tuckInner) hem = Math.max(hem, 1.22);
+      if (!laidApart && outInner && hem >= 0.98) hem = Math.max(hem, 1.14);
       const big = isOversize(innerPiece);
       const kind = layerKind(innerPiece);
       const size = kind === "dress"
@@ -997,6 +1005,15 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       // Keep the hem at the chosen length: a short photo starts a little lower
       const drop = bottomPiece && kind !== "dress" && !laidApart ? Math.max(0, Math.round(hem * T - size.h)) : 0;
       innerBox = { left: centerX - size.w / 2, top: shoulderY + Math.min(drop, Math.round(T * 0.45)), w: size.w, h: size.h, fit: "fill" };
+      // With a belt the pieces are laid apart, so a tucked top shows only down to the
+      // waist: the part that goes into the trousers is folded under
+      if (laidApart && tuckInner && hem > 1.02 && !(orderedUpper.length === 1 && canOpen(innerPiece) && styleOf(innerPiece, 0) === "open")) {
+        const visible = 1 / hem;
+        const meta = await sharp(innerPiece.buffer).metadata();
+        const cropH = Math.max(20, Math.round(meta.height * visible));
+        innerBox.buffer = await sharp(innerPiece.buffer).extract({ left: 0, top: 0, width: meta.width, height: Math.min(meta.height, cropH) }).png().toBuffer();
+        innerBox.h = Math.round(size.h * visible);
+      }
       // A button-up shirt or jacket on its own, laid open with nothing under it
       if (orderedUpper.length === 1 && canOpen(innerPiece) && styleOf(innerPiece, 0) === "open") {
         innerDraws.push(...(await openBoxes(innerPiece, size, Math.round(size.w * 0.22), innerBox.top)));
@@ -1146,7 +1163,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     }
 
     // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
-    const tucked = topStyle === "tucked" && innerIsTop && bottomPiece;
+    const tucked = tuckInner;
     // Socks lowest, then shoes over them, then trousers over both
     for (const box of sockBoxes) draw.push([box.piece, box]);
     for (const box of shoeBoxes) draw.push([box.piece, box]);
