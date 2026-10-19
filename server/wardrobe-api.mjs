@@ -949,7 +949,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     const isOversize = (piece) => piece?.item?.fit?.oversize === true;
     const hemOf = (piece) => {
       const kind = layerKind(piece);
-      return kind === "dress" ? lengthOf(piece, "dress", 2.3) : kind === "jacket" ? lengthOf(piece, "jacket", 1.3) : lengthOf(piece, "top", 1.4);
+      return kind === "dress" ? lengthOf(piece, "dress", 2.3) : kind === "jacket" ? lengthOf(piece, "jacket", 1.3) : lengthOf(piece, "top", GARMENT_FIT.top.waist);
     };
 
     const innerPiece = orderedUpper[0] || null;
