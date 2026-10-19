@@ -885,12 +885,43 @@ const lookPieceImage = (garment, items = []) => {
   const item = items.find((entry) => entry.id === garment.id);
   return item?.image || garment.thumbnail;
 };
+// A look photographed on the user fills its card; a flat lay sits on the light card.
+// Older looks did not record which kind they are, so the photo's corner colour
+// (flat lays have a plain light background) decides.
+const FLATLAY_BG = [248, 246, 242];
+const lookIsPhoto = (look) => look.mode === "modeled" ? true : look.mode === "flatlay" ? false : null;
+function detectPhotoFromCorner(image) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 4;
+    canvas.height = 4;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, image.naturalWidth * 0.03 || 1, image.naturalHeight * 0.03 || 1, 0, 0, 4, 4);
+    const [r, g, b] = context.getImageData(1, 1, 1, 1).data;
+    return Math.abs(r - FLATLAY_BG[0]) + Math.abs(g - FLATLAY_BG[1]) + Math.abs(b - FLATLAY_BG[2]) > 18;
+  } catch {
+    return false;
+  }
+}
+function LookTileImage({ look, onPhoto }) {
+  return (
+    <OptimizedImage
+      src={look.image}
+      onError={imageFallback(look.image)}
+      onLoad={(event) => { if (lookIsPhoto(look) === null) onPhoto(detectPhotoFromCorner(event.currentTarget)); }}
+      alt=""
+      sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px"
+      breakpoints={[240, 320, 480, 640]}
+    />
+  );
+}
+
 const lookImages = (look, items = []) => [
   { src: thumbUrl(look.image, 1080), alt: look.name },
   ...(look.garments || []).map((garment) => ({ src: thumbUrl(lookPieceImage(garment, items), 1080), alt: garment.name })),
 ];
 
-function LookViewerModal({ look, items = [], onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
+function LookViewerModal({ look, isPhoto = false, items = [], onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
   const [deleting, setDeleting] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(null);
 
@@ -914,7 +945,7 @@ function LookViewerModal({ look, items = [], onClose, onDelete, onPack, onCreate
           </button>
         </header>
 
-        <button type="button" className="look-viewer__photo" onClick={() => setZoomIndex(0)} aria-label="הגדלת תמונת הלוק">
+        <button type="button" className={`look-viewer__photo${(lookIsPhoto(look) ?? isPhoto) ? " is-photo" : ""}`} onClick={() => setZoomIndex(0)} aria-label="הגדלת תמונת הלוק">
           <img src={thumbUrl(look.image, 1080)} onError={imageFallback(look.image)} alt={look.name} />
         </button>
 
@@ -931,7 +962,7 @@ function LookViewerModal({ look, items = [], onClose, onDelete, onPack, onCreate
           </div>
         )}
 
-        {look.setting && look.mode !== "flatlay" && (
+        {look.setting && look.mode !== "flatlay" && look.setting !== "Custom wardrobe outfit" && (
           <div style={{ marginBottom: "14px", fontSize: "12px", color: "var(--muted)" }}>
             <span style={{ fontWeight: "600", color: "var(--ink)" }}>רקע:</span> {look.setting}
           </div>
@@ -1910,6 +1941,8 @@ export function App() {
   const [archived, setArchived] = useState([]);
   // Look photos opened full screen from the looks page: { look, index }
   const [lookZoom, setLookZoom] = useState(null);
+  // Looks found to be photos of the user (for older looks that did not record it)
+  const [photoLooks, setPhotoLooks] = useState({});
   const [packingLookId, setPackingLookId] = useState(null);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState("flatlay");
@@ -2673,11 +2706,11 @@ export function App() {
             {outfits.length > 0 ? (
               <section className="gallery-grid looks-gallery" aria-label="לוקים">
                 {outfits.map((look) => (
-                  <div key={look.id} className="gallery-item look-tile">
+                  <div key={look.id} className={`gallery-item look-tile${(lookIsPhoto(look) ?? photoLooks[look.id]) ? " is-photo" : ""}`}>
                     <button type="button" className="gallery-item__main" onClick={() => setSelectedLook(look)} aria-label={`צפייה בלוק ${look.name}`}>
-                      <OptimizedImage src={look.image} onError={imageFallback(look.image)} alt="" sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px" breakpoints={[240, 320, 480, 640]} />
+                      <LookTileImage look={look} onPhoto={(isPhoto) => setPhotoLooks((current) => current[look.id] === isPhoto ? current : { ...current, [look.id]: isPhoto })} />
                     </button>
-                    <p className="gallery-item__name">{look.name}</p>
+                    <p className="gallery-item__name look-tile__name" title={look.name}>{look.name}</p>
                     {!!look.garments?.length && (
                       <div className="look-tile__pieces">
                         {look.garments.map((g, index) => (
@@ -2894,6 +2927,7 @@ export function App() {
       {selectedLook && (
         <LookViewerModal
           look={selectedLook}
+          isPhoto={Boolean(photoLooks[selectedLook.id])}
           items={items}
           onClose={() => setSelectedLook(null)}
           onDelete={deleteOutfit}
