@@ -24,6 +24,8 @@ async function waitForTask(nativeFetch, taskId) {
     } catch {
       continue;
     }
+    // Too many requests right now: just keep waiting
+    if (response.status === 429) { await sleep(5000); continue; }
     if (!response.ok) return response;
     const data = await response.json();
     if (data.status === "done") {
@@ -45,9 +47,24 @@ function installApiFetch(onUnauthorized) {
   installed = true;
   const nativeFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    const response = await nativeFetch(input, init);
     const pathname = apiPath(input);
+    let response = await nativeFetch(input, init);
     if (!pathname) return response;
+    // The host allows a limited number of requests a minute. When it says "too
+    // many", wait and try again quietly (the limit resets within a minute), so the
+    // message never reaches the screen.
+    for (const wait of [2000, 4000, 8000, 15000, 30000]) {
+      if (response.status !== 429) break;
+      const retryAfter = Number(response.headers.get("retry-after"));
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 60000) : wait);
+      response = await nativeFetch(input, init);
+    }
+    if (response.status === 429) {
+      return new Response(JSON.stringify({ error: "השרת עמוס לרגע. נסי שוב בעוד דקה." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
     if (response.status === 401 && pathname !== "/api/import/session" && pathname !== "/api/import/login") {
       onUnauthorized();
     }

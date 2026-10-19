@@ -20,7 +20,15 @@ function json(status, value, headers = {}) {
 }
 
 function imageResponse(bytes, { contentType = "image/png", cache = "public, max-age=31536000, immutable", head = false } = {}) {
-  return new Response(head ? null : bytes, { status: 200, headers: { "Content-Type": contentType, "Cache-Control": cache } });
+  const headers = { "Content-Type": contentType, "Cache-Control": cache };
+  if (cache.includes("immutable")) {
+    // Let Netlify's CDN keep stored photos so repeat loads don't reach the server
+    // (each server request counts toward the host's per-minute limit). The cache is
+    // kept per login cookie, so photos still need the site password.
+    headers["Netlify-CDN-Cache-Control"] = "public, max-age=31536000, immutable";
+    headers["Netlify-Vary"] = "cookie=wardrobe_session";
+  }
+  return new Response(head ? null : bytes, { status: 200, headers });
 }
 
 async function body(request, limit = 50 * 1024 * 1024) {

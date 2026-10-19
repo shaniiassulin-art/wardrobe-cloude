@@ -2033,9 +2033,13 @@ export function App() {
       fetchWardrobe();
       fetchSuitcases();
       fetchOutfits();
-    }, 20000);
+    }, 60000);
 
+    // Coming back to the tab syncs at most once every 30 seconds
+    let lastSync = Date.now();
     const onSync = () => {
+      if (Date.now() - lastSync < 30000) return;
+      lastSync = Date.now();
       fetchWardrobe();
       fetchSuitcases();
       fetchOutfits();
