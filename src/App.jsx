@@ -1932,7 +1932,7 @@ export function App() {
   // Cards rise into place when the wardrobe loads or the tab changes
   useLayoutEffect(() => {
     if (loading || !paneRef.current) return;
-    revealChildren(paneRef.current.querySelectorAll(".gallery-grid, .looks-grid, .luggage-packed-grid"));
+    revealChildren(paneRef.current.querySelectorAll(".gallery-grid, .luggage-packed-grid"));
   }, [activeType, loading]);
 
   const fetchWardrobesList = useCallback(async () => {
@@ -2620,35 +2620,29 @@ export function App() {
         {activeType === "looks" && !loading && (
           <>
             {outfits.length > 0 ? (
-              <section className="looks-grid" aria-label="לוקים מדוגמנים">
+              <section className="gallery-grid looks-gallery" aria-label="לוקים">
                 {outfits.map((look) => (
-                  <article
-                    key={look.id}
-                    className="look-card"
-                    onClick={() => setSelectedLook(look)}
-                  >
-                    <div className="look-card__image-wrap">
-                      <OptimizedImage className="look-card__image" src={look.image} onError={imageFallback(look.image)} alt={look.name} sizes="(max-width: 520px) 100vw, (max-width: 900px) 50vw, 360px" breakpoints={[320, 480, 640, 800]} />
-                    </div>
-                    <div className="look-card__body">
-                      <h3 className="look-card__title">{look.name}</h3>
-                      {!!look.garments?.length && (
-                        <div className="look-card__garments">
-                          {look.garments.map((g, index) => (
-                            <button
-                              key={g.id}
-                              type="button"
-                              className="look-card__garment-thumb-btn"
-                              aria-label={`הגדלת ${g.name}`}
-                              onClick={(event) => { event.stopPropagation(); setLookZoom({ look, index: index + 1 }); }}
-                            >
-                              <img className="look-card__garment-thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </article>
+                  <div key={look.id} className="gallery-item look-tile">
+                    <button type="button" className="gallery-item__main" onClick={() => setSelectedLook(look)} aria-label={`צפייה בלוק ${look.name}`}>
+                      <OptimizedImage src={look.image} onError={imageFallback(look.image)} alt="" sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 260px" breakpoints={[240, 320, 480, 640]} />
+                    </button>
+                    <p className="gallery-item__name">{look.name}</p>
+                    {!!look.garments?.length && (
+                      <div className="look-tile__pieces">
+                        {look.garments.map((g, index) => (
+                          <button
+                            key={g.id}
+                            type="button"
+                            className="look-card__garment-thumb-btn"
+                            aria-label={`הגדלת ${g.name}`}
+                            onClick={() => setLookZoom({ look, index: index + 1 })}
+                          >
+                            <img className="look-tile__thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </section>
             ) : (
