@@ -608,6 +608,23 @@ export function normalizeFit(fit = {}) {
   return { ...(known ? { length } : {}), ...(fit?.oversize === true ? { oversize: true } : {}) };
 }
 
+// Body measurements in cm, from the profile. Used for the proportions of flat
+// lays and given to the image model so photos keep the user's shape.
+export function normalizeBody(input = {}) {
+  const pick = (key, min, max) => {
+    const value = Number(input?.[key]);
+    return Number.isFinite(value) && value >= min && value <= max ? Math.round(value) : null;
+  };
+  const body = { height: pick("height", 120, 220), bust: pick("bust", 50, 160), waist: pick("waist", 40, 160), hips: pick("hips", 50, 170) };
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== null));
+}
+const bodyLine = (body = {}) => {
+  const parts = [];
+  if (body.height) parts.push(`about ${body.height} cm tall`);
+  if (body.bust && body.waist && body.hips) parts.push(`with body measurements ${body.bust}-${body.waist}-${body.hips} cm (bust-waist-hips)`);
+  return parts.length ? `\nBody: The person is ${parts.join(" ")}. Keep these real proportions; do not make the body thinner, curvier or taller than this.` : "";
+};
+
 // Cuts a garment photo down the middle into its left and right halves
 async function splitDownTheMiddle(buffer) {
   const { width, height } = await sharp(buffer).metadata();
@@ -617,7 +634,11 @@ async function splitDownTheMiddle(buffer) {
   return { left, right, ratio: height / width };
 }
 
-export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
+export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, body = {}) {
+  // Width of the chest and of the waist compared with the hips (photos of trousers
+  // are as wide as the hips)
+  const bustToHips = body.bust && body.hips ? Math.max(0.88, Math.min(1.15, body.bust / body.hips)) : 1;
+  const waistToHips = body.waist && body.hips ? Math.max(0.6, Math.min(0.95, body.waist / body.hips)) : 0.8;
   const { jacket, top: topStyle } = normalizeFlatlayStyling(styling);
   if (!garmentEntries.length) {
     throw new Error("No garments provided for flat lay");
@@ -874,7 +895,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       const big = isOversize(innerPiece);
       const size = isDressInner
         ? sizeTo(innerPiece, 0, hem, big ? 500 : 420)
-        : sizeTo(innerPiece, 0, hem, waistW * (big ? 1.32 : 1.0), innerPiece.ratio, big ? [0.95, 1.12] : [0.92, 1.06]);
+        : sizeTo(innerPiece, 0, hem, waistW * bustToHips * (big ? 1.32 : 1.0), innerPiece.ratio, big ? [0.95, 1.12] : [0.92, 1.06]);
       // Keep the hem at the chosen length: a short photo starts a little lower
       const drop = bottomPiece && !isDressInner ? Math.max(0, Math.round(hem * T - size.h)) : 0;
       innerBox = { left: centerX - size.w / 2, top: shoulderY + Math.min(drop, Math.round(T * 0.45)), w: size.w, h: size.h };
@@ -935,7 +956,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       const gap = 22;
       let y = upperBottom + gap;
       beltBoxes = belts.map((belt) => {
-        const w = Math.round(Math.max(300, Math.min(420, bottomBox.w * 1.02)));
+        // A belt sits at the waist, which is narrower than the hips
+        const w = Math.round(Math.max(220, Math.min(420, bottomBox.w * waistToHips * 1.08)));
         const h = Math.min(110, Math.round(w * belt.ratio));
         const box = { piece: belt, left: bodyX - w / 2, top: y, w, h };
         y += h + 10;
@@ -1490,7 +1512,7 @@ export function estimateTextUsd(usage = {}) {
 }
 
 // The written request for a look on the user. Also offered to copy into ChatGPT.
-export function buildLookPrompt(selectedGarments, { outfitName, backdrop, notes } = {}) {
+export function buildLookPrompt(selectedGarments, { outfitName, backdrop, notes, body } = {}) {
     const garmentListDesc = selectedGarments.map((g, idx) => `Garment ${idx + 1}: ${g.name} (${g.part}, color: ${g.color || "as shown"})`).join(", ");
     const notesPrompt = notes?.trim()
       ? `\nStyling & fit instructions: ${notes.trim()}\nFollow these exact styling instructions precisely (e.g. open/closed, untucked/tucked, rolled sleeves, or shoulder tie).`
@@ -1513,7 +1535,7 @@ Outfit: ${outfitName}
 Scene/backdrop: ${backdrop}
 ${notesPrompt}
 
-Subject: Preserve the same person's recognizable face, hair, age, build, skin texture, and body proportions. Dress them in the exact referenced garments. Plain understated shoes and invisible basics such as socks are allowed where needed. Do not add, replace, or invent any other visible clothing or accessory.
+Subject: Preserve the same person's recognizable face, hair, age, build, skin texture, and body proportions.${bodyLine(body)} Dress them in the exact referenced garments. Plain understated shoes and invisible basics such as socks are allowed where needed. Do not add, replace, or invent any other visible clothing or accessory.
 
 Style/medium: Photorealistic natural editorial fashion campaign with authentic skin and fabric texture and no synthetic AI polish.
 
@@ -1528,9 +1550,10 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
 }
 
 // The written request for one garment on the user. Also offered to copy into ChatGPT.
-export function buildModeledPrompt(record, note = "") {
+export function buildModeledPrompt(record, note = "", body = {}) {
   const base = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail (${record.name}, ${record.part}). The garment colour must stay exactly ${record.color || "as shown in Image 2"}${record.secondaryColor ? ` with ${record.secondaryColor}` : ""}; do not recolour, tint, or restyle it. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
-  return note ? `${base}\nUser direction about this garment and how it is worn: ${note}` : base;
+  const withBody = `${base}${bodyLine(body)}`;
+  return note ? `${withBody}\nUser direction about this garment and how it is worn: ${note}` : withBody;
 }
 
 // A photo the user made elsewhere (e.g. in ChatGPT), saved as a PNG of a sensible size
@@ -1788,6 +1811,10 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     };
   }
 
+  async function bodyOf(wardrobeId = "user-shani") {
+    return normalizeBody((await loadUserProfile(wardrobeId).catch(() => null))?.body);
+  }
+
   async function saveUserProfile(wardrobeId = "user-shani", profile) {
     await store.setJSON(getWardrobeKeys(wardrobeId).userProfileFile, {
       ...profile,
@@ -1926,7 +1953,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     }));
 
     if (isFlatlay) {
-      bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling);
+      bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling, await bodyOf(wardrobeId));
     } else {
       const key = setting("OPENAI_API_KEY");
       const modelData = await loadModelReference(wardrobeId);
@@ -1944,7 +1971,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
       } else {
         const model = { data: modelData, mime: "image/png", name: "model.png" };
 
-        const prompt = buildLookPrompt(selectedGarments, { outfitName, backdrop, notes });
+        const prompt = buildLookPrompt(selectedGarments, { outfitName, backdrop, notes, body: await bodyOf(wardrobeId) });
 
         try {
           bytes = await openAIEdit({
@@ -2030,7 +2057,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
           if (buffer) garmentEntries.push({ buffer, item: g });
         }
         if (garmentEntries.length) {
-          const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling);
+          const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), styling, await bodyOf(wardrobeId));
           const filename = `${outfitId}.png`;
           await store.setBytes(outfitImageKey(filename), bytes);
           outfitImage = `/api/import/outfits/images/${filename}?t=${Date.now()}`;
@@ -2934,7 +2961,7 @@ Respond in strict JSON format:
       if (modeledPromptMatch && request.method === "GET") {
         const record = (await loadImported(resolveWardrobeId(request, url))).find((item) => item.id === modeledPromptMatch[1]);
         if (!record) return json(404, { error: "Wardrobe item not found" });
-        return json(200, { prompt: buildModeledPrompt(record, String(url.searchParams.get("note") || "").slice(0, 600)) });
+        return json(200, { prompt: buildModeledPrompt(record, String(url.searchParams.get("note") || "").slice(0, 600), await bodyOf(resolveWardrobeId(request, url))) });
       }
       const modeledUploadMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/modeled-upload$/i);
       if (modeledUploadMatch && request.method === "POST") {
@@ -2955,7 +2982,7 @@ Respond in strict JSON format:
         const selected = (Array.isArray(input.garmentIds) ? input.garmentIds : []).map((id) => records.find((item) => item.id === id)).filter(Boolean);
         if (!selected.length) return json(400, { error: "יש לבחור לפחות פריט אחד." });
         const outfitName = String(input.name || "").trim() || selected.map((g) => g.name).join(" + ");
-        return json(200, { prompt: buildLookPrompt(selected, { outfitName, backdrop: "a warm, natural daylight setting with minimalist architecture", notes: String(input.notes || "").slice(0, 600) }) });
+        return json(200, { prompt: buildLookPrompt(selected, { outfitName, backdrop: "a warm, natural daylight setting with minimalist architecture", notes: String(input.notes || "").slice(0, 600), body: await bodyOf(resolveWardrobeId(request, url)) }) });
       }
       const openVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/open-version$/i);
       if (openVersionMatch && (request.method === "POST" || request.method === "DELETE")) {
@@ -3076,7 +3103,7 @@ User direction: ${direction}` : ""}`;
 
         const model = { data: modelData, mime: "image/png", name: "model.png" };
         const garment = { data: garmentData, mime: "image/png", name: "garment.png" };
-        const basePrompt = buildModeledPrompt(record);
+        const basePrompt = buildModeledPrompt(record, "", await bodyOf(wId));
 
         let bytes;
         if (!key) {
@@ -3218,7 +3245,7 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
         const input = await body(request);
         const wId = resolveWardrobeId(request, url);
         const current = await loadUserProfile(wId);
-        const updated = { ...current, ...input, lastSync: new Date().toISOString() };
+        const updated = { ...current, ...input, ...(input.body !== undefined ? { body: normalizeBody(input.body) } : {}), lastSync: new Date().toISOString() };
         await saveUserProfile(wId, updated);
         return json(200, updated);
       }

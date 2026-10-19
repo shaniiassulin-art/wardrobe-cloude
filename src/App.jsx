@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { SlidersHorizontal } from "@phosphor-icons/react";
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
@@ -10,7 +11,7 @@ import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
-import { fitForPart } from "./fit-options.js";
+import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
 // Page heading whose words fade in from a soft blur
@@ -1105,6 +1106,52 @@ function AiSpendingSection() {
   );
 }
 
+// Body measurements: used for the proportions of flat lays and given to the AI
+// so photos on the user keep her real shape
+function BodySection({ user, onSaveUser }) {
+  const initial = user?.body || {};
+  const [values, setValues] = useState({ height: initial.height ?? "", bust: initial.bust ?? "", waist: initial.waist ?? "", hips: initial.hips ?? "" });
+  const [state, setState] = useState("idle");
+  useEffect(() => {
+    const body = user?.body || {};
+    setValues({ height: body.height ?? "", bust: body.bust ?? "", waist: body.waist ?? "", hips: body.hips ?? "" });
+  }, [user?.body]);
+  const changed = ["height", "bust", "waist", "hips"].some((key) => String(values[key] ?? "") !== String(initial[key] ?? ""));
+  const save = async (event) => {
+    event.preventDefault();
+    setState("saving");
+    try {
+      await onSaveUser({ body: Object.fromEntries(Object.entries(values).filter(([, value]) => value !== "").map(([key, value]) => [key, Number(value)])) });
+      setState("saved");
+      setTimeout(() => setState("idle"), 2000);
+    } catch {
+      setState("idle");
+    }
+  };
+  const fields = [["height", "גובה"], ["bust", "חזה"], ["waist", "מותן"], ["hips", "ירכיים"]];
+  return (
+    <section className="account-section" aria-labelledby="account-body-title">
+      <h3 id="account-body-title">מידות גוף</h3>
+      <form onSubmit={save}>
+        <div className="body-fields">
+          {fields.map(([key, label]) => (
+            <label key={key} className="body-field">
+              <span>{label}</span>
+              <input className="account-input" type="number" inputMode="numeric" min="0" dir="ltr" value={values[key]} onChange={(e) => setValues((current) => ({ ...current, [key]: e.target.value }))} placeholder="ס״מ" />
+            </label>
+          ))}
+        </div>
+        <div className="account-row">
+          <button className="secondary-button" type="submit" disabled={!changed || state === "saving"}>
+            {state === "saving" ? "שומר..." : state === "saved" ? <><Check size={14} /> נשמר</> : "שמירה"}
+          </button>
+        </div>
+      </form>
+      <p className="account-hint">בסנטימטרים. היחס בין החזה, המותן והירכיים קובע את רוחב החולצה והחגורה בפריסה, וכל המידות נשלחות ל-AI כדי שהתמונות עלייך ישמרו על הפרופורציות שלך.</p>
+    </section>
+  );
+}
+
 function UserAccountModal({
   user,
   stats,
@@ -1241,6 +1288,8 @@ function UserAccountModal({
             </button>
           </div>
         </section>
+
+        <BodySection user={user} onSaveUser={onSaveUser} />
 
         <AiSpendingSection />
 
@@ -1404,7 +1453,7 @@ function StylingChoice({ label, value, options, onChange, disabled }) {
   );
 }
 
-function CustomOutfitModal({ items, modelRefUrl = null, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
+function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
@@ -1412,6 +1461,9 @@ function CustomOutfitModal({ items, modelRefUrl = null, initialItemIds = [], ini
   const [lookName, setLookName] = useState("");
   // One category open at a time; all closed at first
   const [openCategory, setOpenCategory] = useState(null);
+  // The picked piece whose length and fit are being edited here
+  const [settingsId, setSettingsId] = useState(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [completingAI, setCompletingAI] = useState(false);
@@ -1660,12 +1712,45 @@ function CustomOutfitModal({ items, modelRefUrl = null, initialItemIds = [], ini
 
             {aiExplanation && <p className="lb-hint">{aiExplanation}</p>}
 
+            {(() => {
+              const item = selectedItems.find((entry) => entry.id === settingsId);
+              if (!item || !lengthOptions(item.part)) return null;
+              return (
+                <div className="lb-item-settings">
+                  <div className="lb-item-settings__head">
+                    <strong>{item.name}</strong>
+                    <span>{settingsSaving ? "שומר..." : "נשמר לפריט"}</span>
+                  </div>
+                  <FitPicker
+                    compact
+                    part={item.part}
+                    fit={fitForPart(item.fit, item.part)}
+                    onChange={async (fit) => {
+                      setSettingsSaving(true);
+                      try {
+                        await onUpdateItem?.({ ...item, fit });
+                        // Show the change straight away in a flat lay
+                        if (generatedLook && outfitMode === "flatlay") handleGenerate();
+                      } catch {
+                        setBuilderError("לא ניתן לשמור את ההגדרה כרגע");
+                      } finally {
+                        setSettingsSaving(false);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })()}
+
             {selectedItems.length > 0 ? (
               <div className="lb-chips">
                 {selectedItems.map((item) => (
                   <span key={item.id} className="lb-chip">
                     <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt="" />
                     <span className="lb-chip__name">{item.name}</span>
+                    {lengthOptions(item.part) && (
+                      <button type="button" className={settingsId === item.id ? "is-on" : ""} onClick={() => setSettingsId(settingsId === item.id ? null : item.id)} aria-label={`הגדרות ${item.name}`} aria-expanded={settingsId === item.id}><SlidersHorizontal size={13} /></button>
+                    )}
                     <button type="button" onClick={() => removeSelectedItem(item.id)} aria-label={`הסרת ${item.name}`}><X size={12} /></button>
                   </span>
                 ))}
@@ -2894,6 +2979,7 @@ export function App() {
       {builderOpen && (
         <CustomOutfitModal
           items={items}
+          onUpdateItem={saveItem}
           modelRefUrl={modelRefUrl}
           initialItemIds={builderInitialItems}
           initialMode={builderMode}

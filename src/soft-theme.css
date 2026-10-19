@@ -612,3 +612,15 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .look-tile.is-photo .gallery-item__main picture img { object-fit: cover; transform: none; border-radius: inherit; }
 .look-viewer__photo.is-photo { padding: 0; background: transparent; box-shadow: none; }
 .look-viewer__photo.is-photo img { border-radius: 18px; }
+
+/* Look builder: edit a picked piece's length and fit */
+.lb-chip button.is-on { background: var(--ink); color: var(--paper); }
+.lb-item-settings { margin: 0 0 14px; padding: 12px 14px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.lb-item-settings__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.lb-item-settings__head span { font-size: 11px; color: var(--muted); }
+
+/* Profile: body measurements */
+.body-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.body-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.body-field .account-input { width: 100%; min-width: 0; text-align: center; }
+@media (max-width: 420px) { .body-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
