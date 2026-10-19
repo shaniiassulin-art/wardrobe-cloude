@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { SlidersHorizontal } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, SlidersHorizontal } from "@phosphor-icons/react";
 import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
@@ -1495,14 +1495,32 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const hasTop = selectedItems.some((item) => TOP_PARTS.includes(item.part));
   const hasBottom = selectedItems.some((item) => BOTTOM_PARTS.includes(item.part));
   const hasButtoned = selectedItems.some((item) => TOP_PARTS.includes(item.part) && item.fit?.buttoned);
+
+  // Upper-body layers, from the body outwards, and how each outer one is laid
+  const isUpper = (item) => TOP_PARTS.includes(item.part) || OUTER_PARTS.includes(item.part) || item.part === "dress" || item.part === "wholebody";
+  const layerRank = (item) => (item.part === "dress" || item.part === "wholebody" ? 0 : OUTER_PARTS.includes(item.part) ? 3 : item.fit?.buttoned ? 2 : 1);
+  const canOpenLayer = (item) => OUTER_PARTS.includes(item.part) || Boolean(item.fit?.buttoned);
+  const defaultLayerStyle = (item) => (OUTER_PARTS.includes(item.part) ? "open" : item.fit?.buttoned ? "closed" : "front");
+  const [layerOrder, setLayerOrder] = useState(() => initialStyling?.layers?.map((layer) => layer.id) || []);
+  const [layerStyles, setLayerStyles] = useState(() => Object.fromEntries((initialStyling?.layers || []).map((layer) => [layer.id, layer.style])));
+  const upperItems = useMemo(() => {
+    const upper = selectedItems.filter(isUpper);
+    const known = layerOrder.map((id) => upper.find((item) => item.id === id)).filter(Boolean);
+    const added = upper.filter((item) => !layerOrder.includes(item.id)).sort((a, b) => layerRank(a) - layerRank(b));
+    return [...known, ...added];
+  }, [selectedItems, layerOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+  const layersPayload = upperItems.length >= 2
+    ? upperItems.map((item, index) => ({ id: item.id, style: index === 0 ? "closed" : (layerStyles[item.id] || defaultLayerStyle(item)) }))
+    : null;
   // Only the choices that apply to the pieces picked right now are sent
   const activeStyling = useMemo(() => {
     const next = {};
     if (hasOuter && hasInnerTop) next.jacket = styling.jacket;
     if ((hasTop || hasOuter) && hasBottom) next.top = styling.top;
     if (hasButtoned) next.shirt = styling.shirt;
+    if (layersPayload) next.layers = layersPayload;
     return next;
-  }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom, hasButtoned]);
+  }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom, hasButtoned, JSON.stringify(layersPayload)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A look made on the model has already been paid for, so losing it unsaved wastes money
   const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !generatedLook.uploaded && !saving;
@@ -1658,7 +1676,24 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     { id: "shoes", label: "נעליים" },
     { id: "accessories_up", label: "אקססוריז" },
   ];
-  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned);
+  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned || upperItems.length >= 2);
+  const manyLayers = upperItems.length >= 2;
+  const relayer = (order, styles) => {
+    setLayerOrder(order);
+    setLayerStyles(styles);
+    if (generatedLook && outfitMode === "flatlay") {
+      const layers = order.map((id) => upperItems.find((item) => item.id === id)).filter(Boolean)
+        .map((item, index) => ({ id: item.id, style: index === 0 ? "closed" : (styles[item.id] || defaultLayerStyle(item)) }));
+      handleGenerate({ ...activeStyling, layers });
+    }
+  };
+  const moveLayer = (index, step) => {
+    const order = upperItems.map((item) => item.id);
+    const target = index + step;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    relayer(order, layerStyles);
+  };
   const restyle = (key, value) => {
     setStyling((current) => ({ ...current, [key]: value }));
     if (generatedLook) handleGenerate({ ...activeStyling, [key]: value });
@@ -1806,7 +1841,39 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                 <h3>סידור</h3>
                 <span className="lb-tag">חינם, בלי AI</span>
               </div>
-              {hasOuter && hasInnerTop && (
+              {manyLayers && (
+                <div className="lb-layers">
+                  <p className="lb-layers__hint">סדר השכבות על הגוף, מהקרובה לגוף ועד החיצונית, ואיך כל שכבה מונחת</p>
+                  {upperItems.map((item, index) => {
+                    const style = index === 0 ? null : (layerStyles[item.id] || defaultLayerStyle(item));
+                    const options = canOpenLayer(item)
+                      ? [{ id: "open", label: "פתוחה" }, { id: "closed", label: "סגורה" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }]
+                      : [{ id: "closed", label: "מעל" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }];
+                    return (
+                      <div key={item.id} className="lb-layer">
+                        <div className="lb-layer__row">
+                          <span className="lb-layer__num">{index + 1}</span>
+                          <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt="" />
+                          <span className="lb-layer__name">{item.name}{index === 0 && <small> · הכי קרוב לגוף</small>}</span>
+                          <button type="button" disabled={generating || index === 0} onClick={() => moveLayer(index, -1)} aria-label={`להזיז את ${item.name} פנימה`}><ArrowUp size={14} /></button>
+                          <button type="button" disabled={generating || index === upperItems.length - 1} onClick={() => moveLayer(index, 1)} aria-label={`להזיז את ${item.name} החוצה`}><ArrowDown size={14} /></button>
+                        </div>
+                        {index > 0 && (
+                          <div className="styling-choice__options lb-layer__styles" role="radiogroup" aria-label={`איך ${item.name} מונחת`}>
+                            {options.map((option) => (
+                              <button key={option.id} type="button" role="radio" aria-checked={style === option.id} className={style === option.id ? "is-on" : ""} disabled={generating}
+                                onClick={() => relayer(upperItems.map((entry) => entry.id), { ...layerStyles, [item.id]: option.id })}>
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {!manyLayers && hasOuter && hasInnerTop && (
                 <StylingChoice
                   label="ז'קט"
                   value={styling.jacket}
@@ -1815,7 +1882,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   onChange={(value) => restyle("jacket", value)}
                 />
               )}
-              {hasButtoned && (
+              {hasButtoned && !manyLayers && (
                 <StylingChoice
                   label="חולצה מכופתרת"
                   value={styling.shirt}
