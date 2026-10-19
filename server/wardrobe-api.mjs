@@ -903,11 +903,36 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
       bottomBox = { left: centerX - size.w / 2, top, w: size.w, h: size.h, end };
     }
 
+    // With a belt the pieces are laid apart: top, a gap, the belt, a gap, then the
+    // trousers. Without a belt the lengths chosen for each piece decide the overlap.
+    let beltBoxes = [];
+    if (belts.length && bottomBox) {
+      const upperBottom = innerBox ? innerBox.top + innerBox.h : jacketHemY ?? shoulderY;
+      const gap = 22;
+      let y = upperBottom + gap;
+      beltBoxes = belts.map((belt) => {
+        const w = Math.round(Math.max(300, Math.min(420, bottomBox.w * 1.02)));
+        const h = Math.min(110, Math.round(w * belt.ratio));
+        const box = { piece: belt, left: centerX - w / 2, top: y, w, h };
+        y += h + 10;
+        return box;
+      });
+      bottomBox.top = y - 10 + gap;
+    } else if (belts.length) {
+      const meetY = innerBox ? innerBox.top + innerBox.h + 20 : waistY;
+      beltBoxes = belts.map((belt, i) => {
+        const w = 380;
+        const h = Math.min(110, Math.round(w * belt.ratio));
+        return { piece: belt, left: centerX - w / 2, top: meetY + i * (h + 10), w, h };
+      });
+    }
+
     // Shoes sit at the ankle under long trousers or a long dress; otherwise a little below the hem
     const shoeBoxes = [];
     if (shoes.length) {
       const lowest = Math.max(
         bottomBox ? bottomBox.top + bottomBox.h : 0,
+        ...beltBoxes.map((box) => box.top + box.h),
         innerBox ? innerBox.top + innerBox.h : 0,
         jacketHemY || 0,
       );
@@ -931,16 +956,6 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
         shoeBoxes.push({ piece: shoe, left: centerX - 130, top: shoeTop + 230 + i * 220, w: 260, h });
       });
     }
-
-    // A belt always sits where the top meets the trousers: at the waist when the
-    // top is tucked in (or short), at the top's hem when it hangs over the trousers.
-    const topOut = innerBox && !isDressInner && bottomPiece && topStyle !== "tucked";
-    const meetY = topOut ? Math.max(waistY, innerBox.top + innerBox.h) : bottomBox ? bottomBox.top : innerBox ? innerBox.top + innerBox.h : waistY;
-    const beltBoxes = belts.map((belt, i) => {
-      const w = Math.round(Math.max(300, Math.min(420, (bottomBox?.w || innerBox?.w || 380) * 1.02)));
-      const h = Math.min(110, Math.round(w * belt.ratio));
-      return { piece: belt, left: centerX - w / 2, top: meetY - Math.round(h / 2) + i * (h + 8), w, h };
-    });
 
     // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
     const tucked = topStyle === "tucked" && innerPiece && !isDressInner && bottomPiece;
@@ -1089,7 +1104,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}) {
 
   // Tucked or untucked: the bottoms overlap the hem of the top a little.
   // Only when there is a separate top (not a dress) and bottoms to tuck into.
-  const canTuck = topStyle && bottoms.length > 0 && allUpper.length > 0 && !allUpper.every((e) => dresses.includes(e));
+  const canTuck = topStyle && !belts.length && bottoms.length > 0 && allUpper.length > 0 && !allUpper.every((e) => dresses.includes(e));
   if (canTuck) {
     const sectionBottom = tuckLine ?? upperBottom ?? (currentY - 15);
     const upperHeight = Math.max(1, sectionBottom - upperTopY);
