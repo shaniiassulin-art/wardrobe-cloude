@@ -1,4 +1,4 @@
-const CACHE = "open-wardrobe-shell-v1";
+const CACHE = "open-wardrobe-shell-v2";
 const IMAGE_CACHE = "wardrobe-images-v1";
 // Wardrobe and look photos. Their URLs change (?t=) whenever a photo is replaced,
 // so a saved copy never goes stale and can be shown straight from the phone.
@@ -65,11 +65,29 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The app's code files have a unique name per version, so a saved copy is
+  // always right. Keeping them means a saved page can still start offline.
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(caches.open(CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) cache.put(request, response.clone());
+      return response;
+    }));
+    return;
+  }
+
+  // Pages: always try the network first. Only a good answer is saved, so an
+  // error page (server busy, offline) is never shown later as the site.
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).then((response) => {
-      const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(request, copy));
-      return response;
+      if (response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, copy));
+        return response;
+      }
+      return caches.match(request).then((cached) => cached || caches.match("/")).then((cached) => cached || response);
     }).catch(() => caches.match(request).then((cached) => cached || caches.match("/"))));
   }
 });

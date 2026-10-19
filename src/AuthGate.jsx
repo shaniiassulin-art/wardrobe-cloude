@@ -50,6 +50,9 @@ function installApiFetch(onUnauthorized) {
     const pathname = apiPath(input);
     let response = await nativeFetch(input, init);
     if (!pathname) return response;
+    // The startup check must never wait: the app opens and the server asks for
+    // the password later if needed
+    if (pathname === "/api/import/session") return response;
     // The host allows a limited number of requests a minute. When it says "too
     // many", wait and try again quietly (the limit resets within a minute), so the
     // message never reaches the screen.
@@ -127,13 +130,25 @@ export function AuthGate({ children }) {
 
   useEffect(() => {
     installApiFetch(() => setState("login"));
+    // If the server is slow to answer (waking up, or busy), open the app anyway
+    // after a moment; any request that needs the password will bring up the login.
+    const fallback = setTimeout(() => setState((current) => (current === "checking" ? "ready" : current)), 3500);
     fetch("/api/import/session", { cache: "no-store" })
-      .then((response) => setState(response.status === 401 ? "login" : "ready"))
+      .then((response) => setState((current) => (response.status === 401 ? "login" : current === "login" ? current : "ready")))
       // Offline: show the cached app rather than a login wall
-      .catch(() => setState("ready"));
+      .catch(() => setState((current) => (current === "checking" ? "ready" : current)))
+      .finally(() => clearTimeout(fallback));
+    return () => clearTimeout(fallback);
   }, []);
 
-  if (state === "checking") return null;
+  if (state === "checking") {
+    return (
+      <main className="app-loading" dir="rtl" aria-busy="true">
+        <span className="app-loading__dot" />
+        <p>טוען את המלתחה...</p>
+      </main>
+    );
+  }
   if (state === "login") return <LoginScreen onSuccess={() => setState("ready")} />;
   return children;
 }

@@ -582,3 +582,9 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .look-tile__thumb { display: block; width: 26px; height: 26px; padding: 2px; object-fit: contain; border-radius: 7px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .gallery-item.look-tile .look-tile__thumb { width: 26px; height: 26px; transform: none; }
 .gallery-item.look-tile .look-card__garment-thumb-btn { flex: 0 0 auto; width: 26px; height: 26px; }
+
+/* Shown while the app starts, and if it fails to load */
+.app-loading { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 14px; padding: 24px; background: var(--paper); color: var(--muted); font-size: 15px; text-align: center; }
+.app-loading p { margin: 0; }
+.app-loading__dot { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--ink); animation: app-spin 900ms linear infinite; }
+@keyframes app-spin { to { transform: rotate(360deg); } }
