@@ -961,7 +961,16 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     // With a belt the pieces are laid apart: top, a gap, the belt, a gap, then the
     // trousers. Without a belt the lengths chosen for each piece decide the overlap.
     let beltBoxes = [];
-    if (belts.length && bottomBox) {
+    const tuckedIn = topStyle === "tucked" && innerPiece && !isDressInner && bottomPiece;
+    if (belts.length && bottomBox && tuckedIn) {
+      // Tucked in: the trousers come up over the top, and the belt sits on the
+      // trousers' waistband
+      beltBoxes = belts.map((belt, i) => {
+        const w = Math.round(Math.max(220, Math.min(420, bottomBox.w * 1.02)));
+        const h = Math.min(90, Math.round(w * belt.ratio));
+        return { piece: belt, left: bodyX - w / 2, top: bottomBox.top + 6 + i * (h + 6), w, h };
+      });
+    } else if (belts.length && bottomBox) {
       const upperBottom = innerBox ? innerBox.top + innerBox.h : jacketHemY ?? shoulderY;
       const gap = 22;
       let y = upperBottom + gap;
