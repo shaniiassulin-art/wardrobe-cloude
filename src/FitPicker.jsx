@@ -4,8 +4,9 @@ import { isTopPart, lengthOptions } from "./fit-options.js";
 export function FitPicker({ part, fit, onChange, compact = false }) {
   const choices = lengthOptions(part);
   if (!choices) return null;
-  // A top with no length chosen is laid to the trouser line
-  const current = fit?.length || (isTopPart(part) ? "waist" : null);
+  // With no length chosen: a top is laid to the trouser line, a jacket to the bottom
+  const isJacket = part === "wholebody_up" || part === "outerwear" || part === "jacket";
+  const current = fit?.length || (isTopPart(part) ? "waist" : isJacket ? "bottom" : null);
   // Everything already chosen except the setting being changed
   const keep = (changing) => Object.fromEntries(Object.entries(fit || {}).filter(([key, value]) => key !== changing && value !== undefined && value !== false));
   return (
