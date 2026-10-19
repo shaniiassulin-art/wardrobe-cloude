@@ -15,3 +15,15 @@
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
+# The page itself must always be fresh so it points at the current code files
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Code files have a unique name per version and can be kept for good
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

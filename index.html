@@ -13,7 +13,48 @@
     <title>Open Wardrobe - המלתחה שלי</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown until the app starts. If the app's code does not arrive (slow or busy
+         server), try again automatically once, then offer a reload button, so the page
+         is never just white. React replaces all of this when it starts. -->
+    <div id="root">
+      <div id="boot" style="min-height:100vh;min-height:100dvh;display:grid;place-content:center;justify-items:center;gap:14px;padding:24px;background:#f7f2ec;color:#8a8178;font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;text-align:center">
+        <div style="width:34px;height:34px;border-radius:50%;border:3px solid #e6dcd0;border-top-color:#2e2a26;animation:boot-spin .9s linear infinite"></div>
+        <p id="boot-text" style="margin:0">טוען את המלתחה...</p>
+        <button id="boot-reload" type="button" style="display:none;padding:10px 20px;border:0;border-radius:999px;background:#2e2a26;color:#f7f2ec;font:inherit;cursor:pointer">טעינה מחדש</button>
+      </div>
+    </div>
+    <style>@keyframes boot-spin{to{transform:rotate(360deg)}}</style>
+    <script>
+      (function () {
+        var KEY = "boot-retry";
+        function started() { var boot = document.getElementById("boot"); return !boot; }
+        function offerReload(message) {
+          if (started()) return;
+          var text = document.getElementById("boot-text");
+          var button = document.getElementById("boot-reload");
+          if (text) text.textContent = message;
+          if (button) { button.style.display = "inline-block"; button.onclick = function () { location.reload(); }; }
+        }
+        function retryOnce(message) {
+          if (started()) return;
+          var tried = false;
+          try { tried = sessionStorage.getItem(KEY) === "1"; sessionStorage.setItem(KEY, "1"); } catch (e) {}
+          if (!tried) { setTimeout(function () { location.reload(); }, 1500); return; }
+          offerReload(message);
+        }
+        // A code or style file failed to download
+        window.addEventListener("error", function (event) {
+          var target = event.target;
+          if (target && (target.tagName === "SCRIPT" || target.tagName === "LINK")) retryOnce("האתר לא נטען כמו שצריך.");
+        }, true);
+        // Still not started after a while
+        setTimeout(function () { retryOnce("הטעינה לוקחת יותר מהרגיל."); }, 12000);
+        // Started fine: allow an automatic retry next time too
+        window.addEventListener("load", function () {
+          setTimeout(function () { if (started()) { try { sessionStorage.removeItem(KEY); } catch (e) {} } }, 4000);
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
