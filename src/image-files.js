@@ -42,3 +42,43 @@ export const imageFallback = (plain) => (event) => {
   image.removeAttribute("srcset");
   image.src = plain;
 };
+
+// A photo picked by the user, turned into a JPEG data URL no larger than `max`
+// pixels on its longest side (small enough to upload quickly)
+export async function fileToUploadDataUrl(file, max = 1600, quality = 0.88) {
+  const source = await toBrowserImage(file);
+  const bitmap = await createImageBitmap(source).catch(() => null);
+  const image = bitmap || await new Promise((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = () => reject(new Error("לא ניתן לפתוח את התמונה."));
+    element.src = URL.createObjectURL(source);
+  });
+  const width = image.width || image.naturalWidth;
+  const height = image.height || image.naturalHeight;
+  const scale = Math.min(1, max / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+// Copies text, with a fallback for browsers without the clipboard API
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const done = document.execCommand("copy");
+    area.remove();
+    return done;
+  }
+}

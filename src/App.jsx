@@ -9,6 +9,7 @@ import { EMPTY_FILTERS, WardrobeFilters, matchesFilters } from "./WardrobeFilter
 import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
+import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { fitForPart } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
@@ -416,7 +417,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
   );
 }
 
-function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, onSave, onDelete, onModeledGenerated, onItemCreated }) {
+function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCreateLook, onClose, onSave, onDelete, onModeledGenerated, onItemCreated }) {
   const [zoomSrc, setZoomSrc] = useState(null);
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
@@ -728,6 +729,31 @@ function ItemViewer({ item, suitcaseCount = 0, onPack, onCreateLook, onClose, on
             <button type="button" className="secondary-button" onClick={() => setModeledPanelOpen(false)} disabled={generatingModeled}>ביטול</button>
           </div>
           <p className="item-sheet__note">התמונה נשמרת אוטומטית לפריט{hasModeledImage ? " ומחליפה את התמונה הקודמת עלייך" : ""}. החיוב הוא על היצירה עצמה.</p>
+          <ChatGptHelper
+            getPrompt={async () => {
+              const res = await fetch(`/api/import/wardrobe/${item.id}/prompt?note=${encodeURIComponent(modeledNote)}`);
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "לא ניתן להכין הנחיה");
+              return data.prompt;
+            }}
+            photos={[
+              ...(modelRefUrl ? [{ src: modelRefUrl, name: "התמונה שלי", filename: "me.png" }] : []),
+              { src: item.image, thumb: thumbUrl(fittedImage(item.image), 160), name: draft.name || type, filename: `${draft.name || "garment"}.png` },
+            ]}
+            uploadLabel="העלאת התמונה עליי"
+            onUpload={async (imageDataUrl) => {
+              const res = await fetch(`/api/import/wardrobe/${item.id}/modeled-upload`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageDataUrl }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "ההעלאה נכשלה");
+              onModeledGenerated?.(data);
+              setActivePhotoTab("modeled");
+              setModeledPanelOpen(false);
+            }}
+          />
         </div>
       )}
       {modeledError && <p className="item-sheet__error" role="alert">{modeledError}</p>}
@@ -1347,7 +1373,7 @@ function StylingChoice({ label, value, options, onChange, disabled }) {
   );
 }
 
-function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
+function CustomOutfitModal({ items, modelRefUrl = null, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
@@ -1391,7 +1417,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
   }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom]);
 
   // A look made on the model has already been paid for, so losing it unsaved wastes money
-  const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !saving;
+  const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !generatedLook.uploaded && !saving;
   const confirmDiscardPaid = (action = "לסגור") => !paidUnsaved || window.confirm(`הלוק עלייך כבר נוצר והיצירה עלתה ${lookOnModelPrice(selectedIds.length)}. אם ${action} בלי לשמור, הלוק יאבד והכסף לא יחזור. להמשיך בלי לשמור?`);
   const requestClose = () => { if (confirmDiscardPaid("תסגרי")) onClose(); };
 
@@ -1508,6 +1534,7 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
             notes: outfitNotes.trim() || generatedLook.notes,
             mode: outfitMode,
             styling: outfitMode === "flatlay" ? activeStyling : undefined,
+            ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
           }
         : {
             name: lookName.trim() || selectedItems.map((i) => i.name).join(" + "),
@@ -1689,6 +1716,30 @@ function CustomOutfitModal({ items, initialItemIds = [], initialMode = "flatlay"
               placeholder={outfitMode === "flatlay" ? "נשמרות עם הלוק ועוברות ל-AI אם תיצרי אותו עלייך" : `${AI_NOTE_HINT}, להכניס את החולצה למכנסיים`}
               rows={2}
             />
+            {outfitMode === "modeled" && selectedItems.length > 0 && (
+              <ChatGptHelper
+                getPrompt={async () => {
+                  const res = await fetch("/api/import/outfits/prompt", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ garmentIds: selectedIds, notes: outfitNotes, name: lookName }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "לא ניתן להכין הנחיה");
+                  return data.prompt;
+                }}
+                photos={[
+                  ...(modelRefUrl ? [{ src: modelRefUrl, name: "התמונה שלי", filename: "me.png" }] : []),
+                  ...selectedItems.map((item) => ({ src: item.image, thumb: thumbUrl(fittedImage(item.thumbnail || item.image), 160), name: item.name, filename: `${item.name || "garment"}.png` })),
+                ]}
+                uploadLabel="העלאת הלוק שיצרתי"
+                onUpload={async (imageDataUrl) => {
+                  setGeneratedLook({ image: imageDataUrl, name: lookName.trim() || selectedItems.map((i) => i.name).join(" + "), mode: "modeled", uploaded: true });
+                  setJustCreated(Date.now());
+                  requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }));
+                }}
+              />
+            )}
             <label className="lb-label" htmlFor="look-builder-name">שם הלוק <span>אופציונלי</span></label>
             <input id="look-builder-name" className="lb-input" type="text" value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder={selectedItems.length ? selectedItems.map((i) => i.name).slice(0, 3).join(" + ") : "למשל: ערב עם חברות"} />
           </section>
@@ -2767,6 +2818,7 @@ export function App() {
       {selectedItem && (
         <ItemViewer
           item={selectedItem}
+          modelRefUrl={modelRefUrl}
           suitcaseCount={suitcases.filter((s) => s.garmentIds?.includes(selectedItem.id)).length}
           onPack={(id) => setPackingIds([id])}
           onCreateLook={(id) => { setSelectedId(null); openLookBuilder([id], "flatlay"); }}
@@ -2809,6 +2861,7 @@ export function App() {
       {builderOpen && (
         <CustomOutfitModal
           items={items}
+          modelRefUrl={modelRefUrl}
           initialItemIds={builderInitialItems}
           initialMode={builderMode}
           initialNotes={builderInitialExtras.notes}

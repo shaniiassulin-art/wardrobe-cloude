@@ -1465,6 +1465,56 @@ export function estimateTextUsd(usage = {}) {
   return (input * TEXT_INPUT_USD) + (output * TEXT_OUTPUT_USD);
 }
 
+// The written request for a look on the user. Also offered to copy into ChatGPT.
+export function buildLookPrompt(selectedGarments, { outfitName, backdrop, notes } = {}) {
+    const garmentListDesc = selectedGarments.map((g, idx) => `Garment ${idx + 1}: ${g.name} (${g.part}, color: ${g.color || "as shown"})`).join(", ");
+    const notesPrompt = notes?.trim()
+      ? `\nStyling & fit instructions: ${notes.trim()}\nFollow these exact styling instructions precisely (e.g. open/closed, untucked/tucked, rolled sleeves, or shoulder tie).`
+      : "";
+
+    const hasOuter = selectedGarments.some((g) => g.part === "wholebody_up" || g.part === "outerwear" || g.part === "jacket");
+    const layeredClause = hasOuter
+      ? `\nLayered-look clause: Layer the exact inner top and outer layer naturally so both remain visibly identifiable. First inspect the outer reference. If it has a real full front button or zipper closure, it may be worn naturally open or partly open using only that closure. If it is a pullover or has no full front opening, keep it closed exactly as designed and reveal the inner top only at its real collar or neckline, sleeve or cuff edge, or a natural 2–4 cm untucked hem below the outer layer. Never invent, add, split, unzip, unbutton, or simulate a closure. Keep the outer garment at its true length even when it overlaps the waistband.`
+      : "";
+
+    return `Use case: identity-preserve
+Asset type: square outfit gallery photograph
+
+Image 1: identity reference for the exact person to preserve.
+${selectedGarments.map((g, idx) => `Image ${idx + 2}: exact ${g.part} reference (${g.name})`).join("\n")}
+
+Primary request: Create a professional square editorial fashion photograph of the person from Image 1 wearing all of the exact referenced garments (${garmentListDesc}), and only those garments.
+
+Outfit: ${outfitName}
+Scene/backdrop: ${backdrop}
+${notesPrompt}
+
+Subject: Preserve the same person's recognizable face, hair, age, build, skin texture, and body proportions. Dress them in the exact referenced garments. Plain understated shoes and invisible basics such as socks are allowed where needed. Do not add, replace, or invent any other visible clothing or accessory.
+
+Style/medium: Photorealistic natural editorial fashion campaign with authentic skin and fabric texture and no synthetic AI polish.
+
+Composition/framing: Square 1:1 image. Show the complete person and outfit from head through shoes. Keep the person centered and occupying most of the frame with modest breathing room. Use a relaxed, mostly front-facing pose with arms away from the torso so every item remains readable.
+
+Lighting/mood: Warm professional natural light, realistic shadows, and restrained editorial color grading.
+
+Garment fidelity: Preserve every referenced garment precisely: color, material, fit, construction, pattern, graphics, logos, text, proportions, and distinctive details. Keep each piece recognizable without changing its natural length, tuck, or construction.
+${layeredClause}
+
+Avoid: Completely hidden selected garments, invented zippers, buttons, openings, unnatural layering, extra people, text overlays, watermarks, studio cutout appearance, or synthetic AI polish.`;
+}
+
+// The written request for one garment on the user. Also offered to copy into ChatGPT.
+export function buildModeledPrompt(record, note = "") {
+  const base = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail (${record.name}, ${record.part}). The garment colour must stay exactly ${record.color || "as shown in Image 2"}${record.secondaryColor ? ` with ${record.secondaryColor}` : ""}; do not recolour, tint, or restyle it. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
+  return note ? `${base}\nUser direction about this garment and how it is worn: ${note}` : base;
+}
+
+// A photo the user made elsewhere (e.g. in ChatGPT), saved as a PNG of a sensible size
+async function normalizeUpload(input) {
+  const { data } = decodeImage(input);
+  return sharp(data, { failOnError: false }).rotate().resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true }).png().toBuffer();
+}
+
 export function createWardrobeApi({ store, env = {}, defer } = {}) {
   let serverSettings = null;
   const running = new Map();
@@ -1870,40 +1920,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
       } else {
         const model = { data: modelData, mime: "image/png", name: "model.png" };
 
-        const garmentListDesc = selectedGarments.map((g, idx) => `Garment ${idx + 1}: ${g.name} (${g.part}, color: ${g.color || "as shown"})`).join(", ");
-        const notesPrompt = notes?.trim()
-          ? `\nStyling & fit instructions: ${notes.trim()}\nFollow these exact styling instructions precisely (e.g. open/closed, untucked/tucked, rolled sleeves, or shoulder tie).`
-          : "";
-
-        const hasOuter = selectedGarments.some((g) => g.part === "wholebody_up" || g.part === "outerwear" || g.part === "jacket");
-        const layeredClause = hasOuter
-          ? `\nLayered-look clause: Layer the exact inner top and outer layer naturally so both remain visibly identifiable. First inspect the outer reference. If it has a real full front button or zipper closure, it may be worn naturally open or partly open using only that closure. If it is a pullover or has no full front opening, keep it closed exactly as designed and reveal the inner top only at its real collar or neckline, sleeve or cuff edge, or a natural 2–4 cm untucked hem below the outer layer. Never invent, add, split, unzip, unbutton, or simulate a closure. Keep the outer garment at its true length even when it overlaps the waistband.`
-          : "";
-
-        const prompt = `Use case: identity-preserve
-Asset type: square outfit gallery photograph
-
-Image 1: identity reference for the exact person to preserve.
-${selectedGarments.map((g, idx) => `Image ${idx + 2}: exact ${g.part} reference (${g.name})`).join("\n")}
-
-Primary request: Create a professional square editorial fashion photograph of the person from Image 1 wearing all of the exact referenced garments (${garmentListDesc}), and only those garments.
-
-Outfit: ${outfitName}
-Scene/backdrop: ${backdrop}
-${notesPrompt}
-
-Subject: Preserve the same person's recognizable face, hair, age, build, skin texture, and body proportions. Dress them in the exact referenced garments. Plain understated shoes and invisible basics such as socks are allowed where needed. Do not add, replace, or invent any other visible clothing or accessory.
-
-Style/medium: Photorealistic natural editorial fashion campaign with authentic skin and fabric texture and no synthetic AI polish.
-
-Composition/framing: Square 1:1 image. Show the complete person and outfit from head through shoes. Keep the person centered and occupying most of the frame with modest breathing room. Use a relaxed, mostly front-facing pose with arms away from the torso so every item remains readable.
-
-Lighting/mood: Warm professional natural light, realistic shadows, and restrained editorial color grading.
-
-Garment fidelity: Preserve every referenced garment precisely: color, material, fit, construction, pattern, graphics, logos, text, proportions, and distinctive details. Keep each piece recognizable without changing its natural length, tuck, or construction.
-${layeredClause}
-
-Avoid: Completely hidden selected garments, invented zippers, buttons, openings, unnatural layering, extra people, text overlays, watermarks, studio cutout appearance, or synthetic AI polish.`;
+        const prompt = buildLookPrompt(selectedGarments, { outfitName, backdrop, notes });
 
         try {
           bytes = await openAIEdit({
@@ -1971,6 +1988,14 @@ Avoid: Completely hidden selected garments, invented zippers, buttons, openings,
 
     const outfitId = outfitData.id || `outfit-${randomUUID().slice(0, 8)}`;
     let outfitImage = outfitData.image;
+    // A photo of the look made elsewhere (e.g. in ChatGPT)
+    if (typeof outfitData.uploadedImage === "string" && outfitData.uploadedImage.startsWith("data:")) {
+      const bytes = await normalizeUpload({ imageDataUrl: outfitData.uploadedImage });
+      const filename = `${outfitId}.png`;
+      await store.setBytes(outfitImageKey(filename), bytes);
+      outfitImage = `/api/import/outfits/images/${filename}?t=${Date.now()}`;
+      outfitData = { ...outfitData, mode: "modeled", uploadedImage: undefined };
+    }
     const styling = outfitData.mode === "flatlay" ? normalizeFlatlayStyling(outfitData.styling) : {};
 
     if (!outfitImage || outfitData.mode === "flatlay" || outfitImage.startsWith("data:")) {
@@ -2880,6 +2905,34 @@ Respond in strict JSON format:
         await store.setJSON(BALANCE_KEY, { balanceUsd, setAt: new Date().toISOString(), spentAtSet: log.totalUsd || 0 });
         return json(200, await billingSummary());
       }
+      // ChatGPT route: the written request to copy, and photos made there to upload
+      const modeledPromptMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/prompt$/i);
+      if (modeledPromptMatch && request.method === "GET") {
+        const record = (await loadImported(resolveWardrobeId(request, url))).find((item) => item.id === modeledPromptMatch[1]);
+        if (!record) return json(404, { error: "Wardrobe item not found" });
+        return json(200, { prompt: buildModeledPrompt(record, String(url.searchParams.get("note") || "").slice(0, 600)) });
+      }
+      const modeledUploadMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/modeled-upload$/i);
+      if (modeledUploadMatch && request.method === "POST") {
+        const id = modeledUploadMatch[1];
+        const wId = resolveWardrobeId(request, url);
+        const bytes = await normalizeUpload(await body(request));
+        const records = await loadImported(wId);
+        const record = records.find((item) => item.id === id);
+        if (!record) return json(404, { error: "Wardrobe item not found" });
+        await store.setBytes(libraryKey(`${id}-modeled.png`), bytes);
+        record.modeledImage = `${LIBRARY_ASSET_ROOT}/${id}-modeled.png?t=${Date.now()}`;
+        await saveImported(wId, records);
+        return json(200, record);
+      }
+      if (url.pathname === "/api/import/outfits/prompt" && request.method === "POST") {
+        const input = await body(request);
+        const records = await loadImported(resolveWardrobeId(request, url));
+        const selected = (Array.isArray(input.garmentIds) ? input.garmentIds : []).map((id) => records.find((item) => item.id === id)).filter(Boolean);
+        if (!selected.length) return json(400, { error: "יש לבחור לפחות פריט אחד." });
+        const outfitName = String(input.name || "").trim() || selected.map((g) => g.name).join(" + ");
+        return json(200, { prompt: buildLookPrompt(selected, { outfitName, backdrop: "a warm, natural daylight setting with minimalist architecture", notes: String(input.notes || "").slice(0, 600) }) });
+      }
       const openVersionMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})\/open-version$/i);
       if (openVersionMatch && (request.method === "POST" || request.method === "DELETE")) {
         // A photo of a jacket lying open, made once with AI and reused for free in every flat lay
@@ -2999,7 +3052,7 @@ User direction: ${direction}` : ""}`;
 
         const model = { data: modelData, mime: "image/png", name: "model.png" };
         const garment = { data: garmentData, mime: "image/png", name: "garment.png" };
-        const basePrompt = `Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail (${record.name}, ${record.part}). The garment colour must stay exactly ${record.color || "as shown in Image 2"}${record.secondaryColor ? ` with ${record.secondaryColor}` : ""}; do not recolour, tint, or restyle it. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.`;
+        const basePrompt = buildModeledPrompt(record);
 
         let bytes;
         if (!key) {
