@@ -736,6 +736,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     e.nameLower.includes("מזוודה") ||
     e.nameLower.includes("backpack");
 
+  const isSock = (e) =>
+    e.nameLower.includes("sock") || e.nameLower.includes("גרב");
+
   const isShoe = (e) =>
     e.part === "shoes" ||
     e.nameLower.includes("shoe") ||
@@ -768,8 +771,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
   );
   const belts = processed.filter(isBelt);
   const bottoms = processed.filter((e) => isBottom(e) && !outerwear.includes(e) && !dresses.includes(e) && !tops.includes(e));
-  const shoes = processed.filter(isShoe);
-  const bags = processed.filter((e) => isBag(e) && !shoes.includes(e));
+  const socks = processed.filter(isSock);
+  const shoes = processed.filter((e) => isShoe(e) && !socks.includes(e));
+  const bags = processed.filter((e) => isBag(e) && !shoes.includes(e) && !socks.includes(e));
 
   // Anything not categorized yet:
   const assigned = new Set([
@@ -780,6 +784,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     ...belts,
     ...bottoms,
     ...shoes,
+    ...socks,
     ...bags,
   ]);
   const otherAccessories = processed.filter((e) => !assigned.has(e));
@@ -896,6 +901,11 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       const size = isDressInner
         ? sizeTo(innerPiece, 0, hem, big ? 500 : 420)
         : sizeTo(innerPiece, 0, hem, waistW * bustToHips * (big ? 1.32 : 1.0), innerPiece.ratio, big ? [0.95, 1.12] : [0.92, 1.06]);
+      // A top tucked into the trousers can never be wider than them
+      if (!isDressInner && bottomPiece && topStyle === "tucked" && size.w > waistW * 0.97) {
+        size.w = Math.round(waistW * 0.97);
+        size.h = Math.round(size.w * innerPiece.ratio);
+      }
       // Keep the hem at the chosen length: a short photo starts a little lower
       const drop = bottomPiece && !isDressInner ? Math.max(0, Math.round(hem * T - size.h)) : 0;
       innerBox = { left: centerX - size.w / 2, top: shoulderY + Math.min(drop, Math.round(T * 0.45)), w: size.w, h: size.h };
@@ -973,22 +983,36 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       });
     }
 
+    // Socks go between the trousers and the shoes: just under the hem, with the
+    // shoes over their lower part
+    const lowestAbove = Math.max(
+      bottomBox ? bottomBox.top + bottomBox.h : 0,
+      ...beltBoxes.map((box) => box.top + box.h),
+      innerBox ? innerBox.top + innerBox.h : 0,
+      jacketHemY || 0,
+    );
+    const sockBoxes = [];
+    if (socks.length) {
+      const w = socks.length > 1 ? 150 : 210;
+      const totalW = socks.length * w + (socks.length - 1) * 20;
+      socks.slice(0, 2).forEach((sock, i) => {
+        const h = Math.min(240, Math.round(w * sock.ratio));
+        sockBoxes.push({ piece: sock, left: bodyX - totalW / 2 + i * (w + 20), top: lowestAbove - Math.round(h * 0.12), w, h });
+      });
+    }
+
     // Shoes sit at the ankle under long trousers or a long dress; otherwise a little below the hem
     const shoeBoxes = [];
     if (shoes.length) {
-      const lowest = Math.max(
-        bottomBox ? bottomBox.top + bottomBox.h : 0,
-        ...beltBoxes.map((box) => box.top + box.h),
-        innerBox ? innerBox.top + innerBox.h : 0,
-        jacketHemY || 0,
-      );
+      const lowest = sockBoxes.length ? Math.max(...sockBoxes.map((box) => box.top + box.h)) : lowestAbove;
       const pair = shoes.slice(0, 2);
       const w = pair.length === 2 ? 270 : 320;
       const shoeH = Math.min(220, Math.round(w * pair[0].ratio));
       // Over the shoe: the hem covers the top third of the shoe. To the ankle: they
       // just meet. Shorter: a small gap.
       const end = bottomBox ? bottomBox.end : innerBox && isDressInner ? lengthOf(innerPiece, "dress", 2.3) : 0;
-      const shoeTop = end >= 3.1 ? lowest - Math.round(shoeH * 0.35)
+      const shoeTop = sockBoxes.length ? lowest - Math.round(shoeH * 0.3)
+        : end >= 3.1 ? lowest - Math.round(shoeH * 0.35)
         : end >= 2.9 ? lowest - 6
         : lowest + 26;
       const gapX = 24;
@@ -1006,6 +1030,8 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
     const tucked = topStyle === "tucked" && innerPiece && !isDressInner && bottomPiece;
     const jacketStyle = jacketPiece && innerPiece ? (jacket || "open") : "front";
+    // Socks lowest, then shoes over them, then trousers over both
+    for (const box of sockBoxes) draw.push([box.piece, box]);
     for (const box of shoeBoxes) draw.push([box.piece, box]);
     if (jacketPiece && jacketStyle === "behind") for (const box of jacketBoxes) draw.push([jacketPiece, box]);
     const middle = [];
@@ -1209,6 +1235,14 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     } else {
       bringToFront(topStyle === "out" ? [...inner, ...outerwear] : outerwear);
     }
+  }
+
+  // Socks between the trousers and the shoes
+  for (const sock of socks) {
+    const targetW = 220;
+    const targetH = Math.min(240, Math.round(targetW * sock.ratio));
+    await placeItem(sock, { targetW, targetH, left: Math.round(centerX - targetW / 2), top: currentY, blur: 5, opacity: 0.18 });
+    currentY += targetH + 14;
   }
 
   // 5. Shoes
