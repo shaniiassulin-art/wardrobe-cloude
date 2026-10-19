@@ -1,10 +1,12 @@
-import { lengthOptions } from "./fit-options.js";
+import { isTopPart, lengthOptions } from "./fit-options.js";
 
 // Multiple-choice length for a garment. Tapping the chosen answer again clears it.
 export function FitPicker({ part, fit, onChange, compact = false }) {
   const choices = lengthOptions(part);
   if (!choices) return null;
   const current = fit?.length || null;
+  // Everything already chosen except the setting being changed
+  const keep = (changing) => Object.fromEntries(Object.entries(fit || {}).filter(([key, value]) => key !== changing && value !== undefined && value !== false));
   return (
     <div className={`fit-picker${compact ? " is-compact" : ""}`}>
       <span className="fit-picker__title">{choices.title} <small>משפיע על הפריסה</small></span>
@@ -16,7 +18,7 @@ export function FitPicker({ part, fit, onChange, compact = false }) {
             role="radio"
             aria-checked={current === option.id}
             className={current === option.id ? "is-on" : ""}
-            onClick={() => onChange({ ...(fit?.oversize ? { oversize: true } : {}), ...(current === option.id ? {} : { length: option.id }) })}
+            onClick={() => onChange({ ...keep("length"), ...(current === option.id ? {} : { length: option.id }) })}
           >
             {option.label}
           </button>
@@ -31,12 +33,31 @@ export function FitPicker({ part, fit, onChange, compact = false }) {
             role="radio"
             aria-checked={Boolean(fit?.oversize) === option.id}
             className={Boolean(fit?.oversize) === option.id ? "is-on" : ""}
-            onClick={() => onChange({ ...(current ? { length: current } : {}), ...(option.id ? { oversize: true } : {}) })}
+            onClick={() => onChange({ ...keep("oversize"), ...(option.id ? { oversize: true } : {}) })}
           >
             {option.label}
           </button>
         ))}
       </div>
+      {isTopPart(part) && (
+        <>
+          <span className="fit-picker__title">סוג חולצה <small>מכופתרת אפשר לפרוס פתוחה</small></span>
+          <div className="fit-picker__options" role="radiogroup" aria-label="סוג חולצה">
+            {[{ id: false, label: "רגילה" }, { id: true, label: "מכופתרת" }].map((option) => (
+              <button
+                key={String(option.id)}
+                type="button"
+                role="radio"
+                aria-checked={Boolean(fit?.buttoned) === option.id}
+                className={Boolean(fit?.buttoned) === option.id ? "is-on" : ""}
+                onClick={() => onChange({ ...keep("buttoned"), ...(option.id ? { buttoned: true } : {}) })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

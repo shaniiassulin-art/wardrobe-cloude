@@ -45,5 +45,8 @@ export function fitForPart(fit, part) {
   return {
     ...(choices.options.some((option) => option.id === fit?.length) ? { length: fit.length } : {}),
     ...(fit?.oversize === true ? { oversize: true } : {}),
+    ...(fit?.buttoned === true && isTopPart(part) ? { buttoned: true } : {}),
   };
 }
+
+export const isTopPart = (part) => part === "upperbody" || part === "top";

@@ -577,6 +577,8 @@ export async function fitMultipleGarmentsOnModel(modelBuffer, garmentEntries = [
 export const FLATLAY_STYLING = {
   jacket: ["open", "front", "behind"],
   top: ["out", "tucked"],
+  // A button-up shirt worn open (laid like an open jacket) or buttoned
+  shirt: ["open", "closed"],
 };
 const LEGACY_STYLING = { jacket: { closed: "front" } };
 
@@ -605,7 +607,11 @@ const ANKLE = 3.0;
 export function normalizeFit(fit = {}) {
   const length = typeof fit?.length === "string" ? fit.length : null;
   const known = Object.values(GARMENT_FIT).some((table) => length in table);
-  return { ...(known ? { length } : {}), ...(fit?.oversize === true ? { oversize: true } : {}) };
+  return {
+    ...(known ? { length } : {}),
+    ...(fit?.oversize === true ? { oversize: true } : {}),
+    ...(fit?.buttoned === true ? { buttoned: true } : {}),
+  };
 }
 
 // Body measurements in cm, from the profile. Used for the proportions of flat
@@ -639,7 +645,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
   // are as wide as the hips)
   const bustToHips = body.bust && body.hips ? Math.max(0.88, Math.min(1.15, body.bust / body.hips)) : 1;
   const waistToHips = body.waist && body.hips ? Math.max(0.6, Math.min(0.95, body.waist / body.hips)) : 0.8;
-  const { jacket, top: topStyle } = normalizeFlatlayStyling(styling);
+  const { jacket, top: topStyle, shirt: shirtStyle } = normalizeFlatlayStyling(styling);
   if (!garmentEntries.length) {
     throw new Error("No garments provided for flat lay");
   }
@@ -864,7 +870,10 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
 
   // One piece of each kind (the usual outfit): lay it out like a body, using each
   // piece's length so a long top covers the waistband, trousers fall on the shoe, etc.
-  const simpleColumn = outerwear.length <= 1 && (tops.length + dresses.length) <= 1 && bottoms.length <= 1
+  // A button-up shirt worn open is laid like an open jacket over whatever is under it
+  const openShirt = shirtStyle === "open" && !outerwear.length ? tops.find((e) => e.item?.fit?.buttoned === true) || null : null;
+  const plainTops = tops.filter((e) => e !== openShirt);
+  const simpleColumn = outerwear.length + (openShirt ? 1 : 0) <= 1 && (plainTops.length + dresses.length) <= 1 && bottoms.length <= 1
     && !(dresses.length && bottoms.length) && (outerwear.length + tops.length + dresses.length + bottoms.length) > 0;
   if (simpleColumn) {
     const T = 300; // shoulder-to-waist, in pixels
@@ -881,8 +890,9 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     };
     const isOversize = (piece) => piece?.item?.fit?.oversize === true;
 
-    const jacketPiece = outerwear[0] || null;
-    const innerPiece = tops[0] || dresses[0] || null;
+    const jacketPiece = outerwear[0] || openShirt || null;
+    const innerPiece = plainTops[0] || dresses[0] || null;
+    const shirtAsJacket = Boolean(openShirt) && jacketPiece === openShirt;
     const bottomPiece = bottoms[0] || null;
     const isDressInner = Boolean(dresses[0]);
     const isSkirt = bottomPiece && /skirt|חצאית/.test(bottomPiece.nameLower);
@@ -901,13 +911,16 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       const size = isDressInner
         ? sizeTo(innerPiece, 0, hem, big ? 500 : 420)
         : sizeTo(innerPiece, 0, hem, waistW * bustToHips * (big ? 1.32 : 1.0), innerPiece.ratio, big ? [0.95, 1.12] : [0.92, 1.06]);
+      // With a belt the top, belt and trousers are laid apart, so each keeps its own
+      // size and position; without one the top is fitted to the trousers
+      const laidApart = belts.length > 0 && Boolean(bottomPiece);
       // A top tucked into the trousers can never be wider than them
-      if (!isDressInner && bottomPiece && topStyle === "tucked" && size.w > waistW * 0.97) {
+      if (!laidApart && !isDressInner && bottomPiece && topStyle === "tucked" && size.w > waistW * 0.97) {
         size.w = Math.round(waistW * 0.97);
         size.h = Math.round(size.w * innerPiece.ratio);
       }
       // Keep the hem at the chosen length: a short photo starts a little lower
-      const drop = bottomPiece && !isDressInner ? Math.max(0, Math.round(hem * T - size.h)) : 0;
+      const drop = bottomPiece && !isDressInner && !laidApart ? Math.max(0, Math.round(hem * T - size.h)) : 0;
       innerBox = { left: centerX - size.w / 2, top: shoulderY + Math.min(drop, Math.round(T * 0.45)), w: size.w, h: size.h };
     }
     // The jacket's collar lines up with the top's
@@ -918,17 +931,21 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
     let jacketBoxes = [];
     let jacketHemY = null;
     if (jacketPiece) {
-      const hem = lengthOf(jacketPiece, "jacket", 1.3);
-      const style = innerPiece ? (jacket || "open") : "front";
+      const hem = shirtAsJacket ? lengthOf(jacketPiece, "top", 1.4) : lengthOf(jacketPiece, "jacket", 1.3);
+      const style = shirtAsJacket ? "open" : innerPiece ? (jacket || "open") : "front";
       if (style === "open" && innerPiece && jacketPiece.openBuffer) {
         const size = sizeTo(jacketPiece, 0, hem, jacketBase * 1.1, jacketPiece.openRatio, [0.9, 1.15]);
         jacketBoxes = [{ left: centerX - size.w / 2, top: collarY, w: size.w, h: size.h, buffer: jacketPiece.openBuffer }];
         jacketHemY = collarY + size.h;
-      } else if (style === "open" && innerPiece) {
+      } else if (style === "open" && !innerPiece && jacketPiece.openBuffer) {
+        const size = sizeTo(jacketPiece, 0, hem, waistW * 1.1, jacketPiece.openRatio, [0.9, 1.15]);
+        jacketBoxes = [{ left: centerX - size.w / 2, top: collarY, w: size.w, h: size.h, buffer: jacketPiece.openBuffer }];
+        jacketHemY = collarY + size.h;
+      } else if (style === "open") {
         const halves = await splitDownTheMiddle(jacketPiece.buffer);
         const size = sizeTo(jacketPiece, 0, hem, jacketBase, halves.ratio, [0.9, 1.15]);
         const halfW = Math.round(size.w / 2);
-        const gap = Math.round((innerBox?.w || 300) * 0.42);
+        const gap = innerBox ? Math.round(innerBox.w * 0.42) : Math.round(size.w * 0.22);
         jacketBoxes = [
           { left: centerX - gap / 2 - halfW, top: collarY, w: halfW, h: size.h, buffer: halves.left, fit: "fill" },
           { left: centerX + gap / 2, top: collarY, w: halfW, h: size.h, buffer: halves.right, fit: "fill" },
@@ -1029,7 +1046,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
 
     // Drawing order, lowest first. Shoes go under the trousers so long trousers fall over them.
     const tucked = topStyle === "tucked" && innerPiece && !isDressInner && bottomPiece;
-    const jacketStyle = jacketPiece && innerPiece ? (jacket || "open") : "front";
+    const jacketStyle = shirtAsJacket ? "open" : jacketPiece && innerPiece ? (jacket || "open") : "front";
     // Socks lowest, then shoes over them, then trousers over both
     for (const box of sockBoxes) draw.push([box.piece, box]);
     for (const box of shoeBoxes) draw.push([box.piece, box]);

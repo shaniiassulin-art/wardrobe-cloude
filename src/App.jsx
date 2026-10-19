@@ -814,9 +814,9 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
         {redoError && <p className="item-sheet__error" role="alert">{redoError}</p>}
       </section>
 
-      {OUTER_PARTS.includes(draft.part) && (
+      {(OUTER_PARTS.includes(draft.part) || (TOP_PARTS.includes(draft.part) && draft.fit?.buttoned)) && (
         <section className="item-sheet__section item-sheet__redo" aria-labelledby="item-open-title">
-          <h3 id="item-open-title">ז'קט פתוח בפריסה</h3>
+          <h3 id="item-open-title">{OUTER_PARTS.includes(draft.part) ? "ז'קט פתוח בפריסה" : "חולצה פתוחה בפריסה"}</h3>
           {item.openImage ? (
             <div className="item-open">
               <button type="button" className="item-open__thumb" onClick={() => setZoomSrc(item.openImage)} aria-label="הגדלת הגרסה הפתוחה">
@@ -1430,10 +1430,11 @@ function SuitcaseFlatlayModal({ data, onClose, onSaveAsOutfit }) {
 const OUTER_PARTS = ["wholebody_up", "outerwear", "jacket"];
 const TOP_PARTS = ["upperbody", "top"];
 const BOTTOM_PARTS = ["lowerbody", "bottom"];
-const DEFAULT_FLATLAY_STYLING = { jacket: "open", top: "out" };
+const DEFAULT_FLATLAY_STYLING = { jacket: "open", top: "out", shirt: "closed" };
 const STYLING_LABELS = {
   jacket: { open: "ז'קט פתוח", front: "ז'קט שלם מלפנים", behind: "ז'קט שלם מאחור", closed: "ז'קט שלם מלפנים" },
   top: { out: "חולצה בחוץ", tucked: "חולצה בתוך המכנסיים" },
+  shirt: { open: "מכופתרת פתוחה", closed: "מכופתרת סגורה" },
 };
 const stylingSummary = (styling) => Object.entries(styling || {}).map(([key, value]) => STYLING_LABELS[key]?.[value]).filter(Boolean).join(" · ");
 
@@ -1491,13 +1492,15 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const hasInnerTop = selectedItems.some((item) => TOP_PARTS.includes(item.part) || item.part === "dress" || item.part === "wholebody");
   const hasTop = selectedItems.some((item) => TOP_PARTS.includes(item.part));
   const hasBottom = selectedItems.some((item) => BOTTOM_PARTS.includes(item.part));
+  const hasButtoned = selectedItems.some((item) => TOP_PARTS.includes(item.part) && item.fit?.buttoned);
   // Only the choices that apply to the pieces picked right now are sent
   const activeStyling = useMemo(() => {
     const next = {};
     if (hasOuter && hasInnerTop) next.jacket = styling.jacket;
     if ((hasTop || hasOuter) && hasBottom) next.top = styling.top;
+    if (hasButtoned) next.shirt = styling.shirt;
     return next;
-  }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom]);
+  }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom, hasButtoned]);
 
   // A look made on the model has already been paid for, so losing it unsaved wastes money
   const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !generatedLook.uploaded && !saving;
@@ -1653,7 +1656,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     { id: "shoes", label: "נעליים" },
     { id: "accessories_up", label: "אקססוריז" },
   ];
-  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom));
+  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned);
   const restyle = (key, value) => {
     setStyling((current) => ({ ...current, [key]: value }));
     if (generatedLook) handleGenerate({ ...activeStyling, [key]: value });
@@ -1808,6 +1811,15 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   disabled={generating}
                   options={[{ id: "open", label: "פתוח" }, { id: "front", label: "מלפנים" }, { id: "behind", label: "מאחור" }]}
                   onChange={(value) => restyle("jacket", value)}
+                />
+              )}
+              {hasButtoned && (
+                <StylingChoice
+                  label="חולצה מכופתרת"
+                  value={styling.shirt}
+                  disabled={generating}
+                  options={[{ id: "closed", label: "סגורה" }, { id: "open", label: "פתוחה" }]}
+                  onChange={(value) => restyle("shirt", value)}
                 />
               )}
               {(hasTop || hasOuter) && hasBottom && (
