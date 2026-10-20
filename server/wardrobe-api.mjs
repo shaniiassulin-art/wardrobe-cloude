@@ -3592,7 +3592,33 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
       const match = url.pathname.match(/^\/api\/import\/jobs\/([a-f0-9-]{36})(?:\/(.*))?$/i);
       if (!match) return json(404, { error: "Not found" });
       const job = await loadJob(match[1]);
-      if (!job) return json(404, { error: "Job not found" });
+      if (!job) {
+        // A finished import is removed once the piece is in the wardrobe. If the
+        // answer to "save" got lost (a weak connection) and save is pressed again,
+        // the piece is already saved: say so instead of failing.
+        const wId = resolveWardrobeId(request, url);
+        const records = await loadImported(wId);
+        const savedRecord = records.find((record) => record.id === `import-${match[1]}`);
+        const action = match[2] || "";
+        if (savedRecord && (action === "metadata" || /^stages\/(garment|modeled)\/approve$/.test(action))) {
+          if (action === "metadata" && request.method === "PATCH") {
+            const input = await body(request);
+            const metadata = normalizeMetadata({ ...input.metadata });
+            Object.assign(savedRecord, {
+              name: metadata.name || savedRecord.name,
+              part: metadata.part || savedRecord.part,
+              color: metadata.color || savedRecord.color,
+              secondaryColor: metadata.secondaryColor ?? savedRecord.secondaryColor ?? null,
+              palette: [metadata.color || savedRecord.color, metadata.secondaryColor ?? savedRecord.secondaryColor].filter(Boolean),
+              tags: Array.isArray(metadata.tags) ? metadata.tags : savedRecord.tags,
+              fit: normalizeFit(metadata.fit),
+            });
+            await saveImported(wId, records);
+          }
+          return json(200, { id: match[1], status: "complete", alreadySaved: true, metadata: savedRecord, stages: {} });
+        }
+        return json(404, { error: "הפריט כבר לא בתהליך הייבוא. אם שמרת אותו, הוא נמצא בארון." });
+      }
       const action = match[2] || "";
       if (!action && request.method === "GET") return json(200, publicJob(job));
       if (!action && request.method === "DELETE") {
@@ -3687,7 +3713,9 @@ User direction about this garment and how it is worn: ${modeledNote}` : baseProm
           job.status = "complete";
         }
         if (stageName === "modeled" && decision === "approve") job.status = "complete";
-        await saveJob(job);
+        // A finished job is saved only after the piece is in the wardrobe, so the
+        // queue's clean-up can never remove its files halfway through saving
+        if (job.status !== "complete") await saveJob(job);
         if (decision === "approve" && stageName !== "crop") {
           try {
             await persistImported(job, stageName === "modeled");

@@ -2745,7 +2745,7 @@ export function App() {
   };
 
   const addImportedItem = useCallback((newItem) => {
-    setItems((current) => current.some((item) => item.id === newItem.id) ? current : [...current, newItem]);
+    setItems((current) => current.some((item) => item.id === newItem.id) ? current.map((item) => item.id === newItem.id ? { ...item, ...newItem } : item) : [...current, newItem]);
   }, []);
 
   const attachImportedModeledImage = useCallback((jobId, modeledImage) => {

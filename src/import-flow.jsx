@@ -407,7 +407,11 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
       const next = await api(`${API}/${id}`);
       setJobs((current) => current.map((job) => job.id === id ? next : job));
       setDrafts((current) => current[id] ? current : { ...current, [id]: defaultDraft(next) });
-    } catch (requestError) { setError(requestError.message); }
+    } catch (requestError) {
+      // Gone from the queue (already saved or removed elsewhere): just drop it
+      if (/\(קוד 404\)/.test(requestError.message)) setJobs((current) => current.filter((job) => job.id !== id));
+      else setError(requestError.message);
+    }
   }, []);
 
   useEffect(() => {
@@ -507,7 +511,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
           setJobs(remainingJobs);
           setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== job.id)));
           setSelectedReviewId(null);
-          setNotice({ tone: "complete", text: "נוסף למלתחה", detail: `${metadata.name} נשמר במלתחה.` });
+          setNotice({ tone: "complete", text: "נוסף למלתחה", detail: updated.alreadySaved ? `${metadata.name} כבר היה שמור במלתחה. השינויים עודכנו.` : `${metadata.name} נשמר במלתחה.` });
           if (!remainingJobs.length) setOpen(false);
         } else {
           setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
