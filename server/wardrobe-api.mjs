@@ -169,6 +169,11 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   const details = Array.isArray(metadata.tags) && metadata.tags.length
     ? metadata.tags.join(", ")
     : "all visible construction and design details";
+  const isShoes = category === "shoes" || /shoe|sneaker|boot|sandal|heel|loafer|נעל|סניקרס|מגף|מגפ|סנדל|כפכף/i.test(name);
+  // Shoes are always shown the same way: the pair side by side, toes towards the viewer
+  const shoeLayout = isShoes
+    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, standing upright side by side on their soles with a small even gap between them, both toes pointing straight toward the camera, seen from the front at a slightly elevated eye level (about 20 degrees above) so the toe box, vamp, laces or straps and the opening are all visible. Both shoes are identical mirror images at the same size and height. If the reference shows only one shoe or shows them from the side, reconstruct the matching second shoe and turn both to this front view.`
+    : "";
 
   return `Use case: background-extraction
 Asset type: ecommerce catalog product cutout source
@@ -185,9 +190,9 @@ Background: Perfectly flat, absolutely uniform solid ${chromaKey} chroma-key col
 
 Lighting: Neutral diffuse product lighting contained on the garment only.
 
-Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.
+Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.${shoeLayout}
 
-Critical: Use no ${chromaKey} anywhere in the garment. Produce exactly one complete garment with a crisp, separable outer silhouette.`;
+Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side and facing the camera, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
 }
 
 function cleanupTolerance(value) {
