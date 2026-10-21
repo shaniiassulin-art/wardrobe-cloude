@@ -3226,8 +3226,8 @@ Respond in strict JSON format:
         if (!records.length) return json(400, { error: "הארון ריק. הוסיפי בגדים כדי לקבל התאמות." });
         const list = records.map((g) => `- id: ${g.id} | ${g.name} | category: ${g.part} | color: ${g.color}${colorFamily(g.color) ? ` (${colorFamily(g.color)})` : ""}${g.secondaryColor ? ` + ${g.secondaryColor}` : ""} | tags: ${(g.tags || []).join(", ") || "none"}${g.fit?.length ? ` | length: ${g.fit.length}` : ""}${g.fit?.oversize ? " | oversize" : ""}`).join("\n");
         const prompt = `You are a personal stylist. The photo is an outfit the user wants to recreate from her own wardrobe.
-1. List every visible garment, shoe and accessory in the photo (at most 8), from top to bottom. For each, write a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "ג'ינס רחב בהיר"), a category id (upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats), and its main hex color.
-2. For each piece, choose up to 3 items from the wardrobe below that could take its place, best first. Match the same kind of garment first (category and type), then color, then style details. Only choose an item if it is a reasonable substitute; otherwise return an empty list. Use only ids from the list, exactly as written.
+1. List every visible garment, shoe and accessory in the photo (at most 8), from top to bottom. For each, write a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "ג'ינס רחב בהיר"), a category id (upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats, sunglasses), its kind in one English word (e.g. shirt, tshirt, sweater, blazer, coat, jeans, trousers, skirt, shorts, dress, sneakers, boots, heels, sandals, bag, belt, sunglasses, hat, necklace, earrings, watch, scarf), and its main hex color.
+2. For each piece, choose up to 3 items from the wardrobe below that could take its place, best first. A match MUST be the same kind of item: sunglasses only match sunglasses, a bag only a bag, trousers only trousers or jeans, a top only a top. Never offer an item of a different kind just because the color is similar. Among items of the same kind, prefer the closest color, then the closest style (cut, length, fit, material, pattern). If the wardrobe has nothing of the same kind, return an empty list. Use only ids from the list, exactly as written.
 3. For each chosen item, give a very short Hebrew reason (up to 8 words), e.g. "אותו צבע, גזרה קצת שונה".
 4. Write "summary": one Hebrew sentence describing the look's style. Write "tip": one short Hebrew sentence on what is missing from the wardrobe to get closer to the look, or an empty string if nothing is missing.
 
@@ -3248,8 +3248,9 @@ ${list}`;
               properties: {
                 summary: { type: "string" },
                 tip: { type: "string" },
-                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "color", "matches"], properties: {
+                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "kind", "color", "matches"], properties: {
                   name: { type: "string" },
+                  kind: { type: "string" },
                   part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "dress", "shoes", "accessories_up"] },
                   color: { type: "string" },
                   matches: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "reason"], properties: { id: { type: "string" }, reason: { type: "string" } } } },
@@ -3264,10 +3265,37 @@ ${list}`;
         let parsed;
         try { parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}"); } catch { parsed = {}; }
         const byId = new Map(records.map((item) => [item.id, item]));
+        // Never offer a different kind of item: a match must be in the same group
+        // (top / jacket / bottom / dress / shoes / accessory), and an accessory must
+        // be the same accessory (sunglasses for sunglasses, a bag for a bag)
+        const groupOf = (part) => ({ upperbody: "top", top: "top", wholebody_up: "jacket", outerwear: "jacket", jacket: "jacket", lowerbody: "bottom", bottom: "bottom", dress: "dress", wholebody: "dress", shoes: "shoes", accessories_up: "accessory", accessory: "accessory" }[part] || part);
+        const ACCESSORY_WORDS = {
+          sunglasses: /sunglass|glasses|משקפ/i,
+          bag: /bag|purse|clutch|tote|backpack|תיק|ארנק|קלאץ/i,
+          belt: /belt|חגור/i,
+          hat: /hat|cap|beanie|כובע/i,
+          necklace: /necklace|chain|pendant|שרשר/i,
+          earrings: /earring|עגיל/i,
+          bracelet: /bracelet|bangle|צמיד/i,
+          ring: /\bring\b|טבעת/i,
+          watch: /watch|שעון/i,
+          scarf: /scarf|צעיף|כאפי/i,
+        };
+        const accessoryKind = (text) => Object.keys(ACCESSORY_WORDS).find((kind) => ACCESSORY_WORDS[kind].test(text || "")) || null;
+        const sameKind = (piece, item) => {
+          // Sunglasses, a bag... only ever match the same accessory, whatever category the AI gave
+          const pieceAccessory = accessoryKind(`${piece.kind} ${piece.name}`);
+          if (pieceAccessory && accessoryKind(`${item.name} ${(item.tags || []).join(" ")}`) !== pieceAccessory) return false;
+          if (groupOf(piece.part) !== groupOf(item.part)) return false;
+          if (groupOf(piece.part) !== "accessory") return true;
+          const wanted = accessoryKind(`${piece.kind} ${piece.name}`);
+          const have = accessoryKind(`${item.name} ${(item.tags || []).join(" ")}`);
+          return Boolean(wanted && have && wanted === have);
+        };
         const pieces = (Array.isArray(parsed.pieces) ? parsed.pieces : []).slice(0, 8).map((piece) => {
           const seen = new Set();
           const matches = (Array.isArray(piece.matches) ? piece.matches : [])
-            .filter((match) => byId.has(match.id) && !seen.has(match.id) && seen.add(match.id))
+            .filter((match) => byId.has(match.id) && sameKind(piece, byId.get(match.id)) && !seen.has(match.id) && seen.add(match.id))
             .slice(0, 3)
             .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
           return { name: String(piece.name || "").slice(0, 60), part: piece.part, color: /^#[0-9a-f]{6}$/i.test(piece.color) ? piece.color : null, matches };
