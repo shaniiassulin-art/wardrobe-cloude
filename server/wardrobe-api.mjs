@@ -172,7 +172,7 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   const isShoes = category === "shoes" || /shoe|sneaker|boot|sandal|heel|loafer|נעל|סניקרס|מגף|מגפ|סנדל|כפכף/i.test(name);
   // Shoes are always shown the same way: the pair side by side, toes towards the viewer
   const shoeLayout = isShoes
-    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from directly above (top-down, bird's-eye flat-lay view, camera looking straight down). Both shoes rest on their soles, parallel, with the heels and the ankle opening at the TOP of the image and the toes pointing DOWN toward the bottom of the image (as if the wearer stands at the top looking down at their own feet), so the whole upper is visible from above: the opening and insole at the top, then the laces or straps and vamp, and the toe box at the bottom. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this top-down view.`
+    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from a high diagonal angle: the camera is above and in front of the shoes, looking down at about 50-60 degrees (not straight down, and not a low front view). Both shoes rest on their soles, parallel, with the heels and the ankle opening toward the TOP of the image and the toes pointing DOWN toward the bottom of the image and the camera. From this angle the opening, laces or straps, vamp and toe box are all visible from above, and a thin strip of the sole's edge shows along the sides and at the toes. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this view.`
     : "";
 
   return `Use case: background-extraction
@@ -192,7 +192,7 @@ Lighting: Neutral diffuse product lighting contained on the garment only.
 
 Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.${shoeLayout}
 
-Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side, seen from directly above, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
+Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side, seen from a high diagonal angle with the toes toward the bottom, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
 }
 
 function cleanupTolerance(value) {
