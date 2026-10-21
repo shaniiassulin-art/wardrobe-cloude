@@ -771,8 +771,13 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 @media (hover: hover) and (pointer: fine) {
   .look-tile:not(.is-photo) .gallery-item__main:hover { background: #ece5db; }
 }
-/* A look photographed on the user is shown whole too, on the card colour */
-.look-tile.is-photo .gallery-item__main { background: #ece5db; }
-.look-tile.is-photo .gallery-item__main picture { display: block; width: 100%; height: 100%; }
+/* A look photographed on the user: no card behind it, just the whole photo
+   with rounded corners, as tall as the photo itself */
+.look-tile.is-photo .gallery-item__main { aspect-ratio: auto; height: auto; padding: 0; background: transparent; border: 0; box-shadow: none; overflow: hidden; }
+@media (hover: hover) and (pointer: fine) {
+  .look-tile.is-photo .gallery-item__main:hover { background: transparent; }
+}
+.look-tile.is-photo .gallery-item__main picture { display: block; width: 100%; height: auto; }
 .look-tile.is-photo .gallery-item__main > img:first-child,
-.look-tile.is-photo .gallery-item__main picture img { width: 100%; height: 100%; object-fit: contain; }
+.look-tile.is-photo .gallery-item__main picture img { display: block; position: static; width: 100%; height: auto; max-height: none; object-fit: contain; border-radius: 20px; }
+.look-viewer__photo.is-photo { background: transparent; }
