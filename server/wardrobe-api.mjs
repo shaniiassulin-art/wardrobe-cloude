@@ -2620,6 +2620,14 @@ Respond in strict JSON format:
 
   // Deleted items go to an archive (photos kept) so they can be brought back
   const archiveKey = (wardrobeId) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, "archive.json");
+  const wishlistKey = (wardrobeId) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, "wishlist.json");
+  const wishlistImageKey = (wardrobeId, id) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, `wishlist/${id}.jpg`);
+  async function loadWishlist(wardrobeId = "user-shani") {
+    return (await store.getJSON(wishlistKey(wardrobeId)).catch(() => null)) || [];
+  }
+  async function saveWishlist(wardrobeId = "user-shani", records = []) {
+    await store.setJSON(wishlistKey(wardrobeId), records);
+  }
   async function loadArchive(wardrobeId = "user-shani") {
     return (await store.getJSON(archiveKey(wardrobeId)).catch(() => null)) || [];
   }
@@ -3211,6 +3219,66 @@ Respond in strict JSON format:
         await saveImported(wId, records);
         return json(200, record);
       }
+      // Wishlist: pieces she does not have yet, saved from an inspiration photo to look for in stores
+      if (url.pathname === "/api/import/wishlist" && request.method === "GET") {
+        return json(200, await loadWishlist(resolveWardrobeId(request, url)));
+      }
+      if (url.pathname === "/api/import/wishlist" && request.method === "POST") {
+        const wId = resolveWardrobeId(request, url);
+        const input = await body(request);
+        const name = String(input.name || "").trim().slice(0, 60);
+        if (!name) return json(400, { error: "חסר שם לפריט." });
+        const id = randomUUID();
+        let hasImage = false;
+        if (input.imageDataUrl) {
+          try {
+            const photo = await sharp(decodeImage(input).data, { failOnError: false }).rotate().flatten({ background: "#ffffff" }).toBuffer();
+            const meta = await sharp(photo).metadata();
+            let crop = sharp(photo);
+            const box = input.box;
+            if (box && [box.x, box.y, box.width, box.height].every(Number.isFinite) && box.width > 0 && box.height > 0) {
+              // The AI's box is rough, so leave a generous margin around it
+              const pad = 0.18;
+              const x0 = Math.max(0, (box.x / 1000 - (box.width / 1000) * pad) * meta.width);
+              const y0 = Math.max(0, (box.y / 1000 - (box.height / 1000) * pad) * meta.height);
+              const x1 = Math.min(meta.width, ((box.x + box.width) / 1000 + (box.width / 1000) * pad) * meta.width);
+              const y1 = Math.min(meta.height, ((box.y + box.height) / 1000 + (box.height / 1000) * pad) * meta.height);
+              if (x1 - x0 > 24 && y1 - y0 > 24) crop = sharp(photo).extract({ left: Math.round(x0), top: Math.round(y0), width: Math.round(x1 - x0), height: Math.round(y1 - y0) });
+            }
+            const bytes = await crop.resize(600, 600, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+            await store.setBytes(wishlistImageKey(wId, id), bytes);
+            hasImage = true;
+          } catch {}
+        }
+        const record = {
+          id,
+          name,
+          part: String(input.part || "").slice(0, 20),
+          color: /^#[0-9a-f]{6}$/i.test(input.color || "") ? input.color : null,
+          search: String(input.search || name).trim().slice(0, 80),
+          note: String(input.note || "").trim().slice(0, 160),
+          image: hasImage ? `/api/import/wishlist/${id}/image?wardrobeId=${encodeURIComponent(wId)}` : null,
+          createdAt: new Date().toISOString(),
+        };
+        const list = await loadWishlist(wId);
+        await saveWishlist(wId, [record, ...list]);
+        return json(200, record);
+      }
+      const wishMatch = url.pathname.match(/^\/api\/import\/wishlist\/([a-f0-9-]{36})(\/image)?$/i);
+      if (wishMatch) {
+        const wId = resolveWardrobeId(request, url);
+        if (wishMatch[2] && (request.method === "GET" || request.method === "HEAD")) {
+          const bytes = await store.getBytes(wishlistImageKey(wId, wishMatch[1]));
+          if (!bytes) return json(404, { error: "Not found" });
+          return imageResponse(bytes, { contentType: "image/jpeg", head: request.method === "HEAD" });
+        }
+        if (!wishMatch[2] && request.method === "DELETE") {
+          const list = await loadWishlist(wId);
+          await saveWishlist(wId, list.filter((entry) => entry.id !== wishMatch[1]));
+          await store.delete(wishlistImageKey(wId, wishMatch[1])).catch(() => {});
+          return json(200, { deleted: true });
+        }
+      }
       if (url.pathname === "/api/import/inspiration" && request.method === "POST") {
         // An inspiration photo (Pinterest, a screenshot...): the AI names each piece
         // in it and picks the closest pieces from the wardrobe. One cheap text+image call.
@@ -3228,6 +3296,8 @@ Respond in strict JSON format:
         const prompt = `You are a personal stylist. The photo is an outfit the user wants to recreate from her own wardrobe.
 1. List every visible garment, shoe and accessory in the photo (at most 8), from top to bottom. For each, write a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "ג'ינס רחב בהיר"), a category id (upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats, sunglasses), its kind in one English word (e.g. shirt, tshirt, sweater, blazer, coat, jeans, trousers, skirt, shorts, dress, sneakers, boots, heels, sandals, bag, belt, sunglasses, hat, necklace, earrings, watch, scarf), and its main hex color.
 2. For each piece, choose up to 3 items from the wardrobe below that could take its place, best first. A match MUST be the same kind of item: sunglasses only match sunglasses, a bag only a bag, trousers only trousers or jeans, a top only a top. Never offer an item of a different kind just because the color is similar. Among items of the same kind, prefer the closest color, then the closest style (cut, length, fit, material, pattern). If the wardrobe has nothing of the same kind, return an empty list. Use only ids from the list, exactly as written.
+2b. Only when "matches" is empty: in "alternatives", choose up to 3 OTHER items from the same category (same category id) that would suit the style and colors of this look instead, best first, each with a short Hebrew reason. Otherwise return an empty "alternatives" list.
+2c. For every piece write "search": a short Hebrew shopping search phrase to buy it in a store (e.g. "מכנסי פשתן בז' רחבים לנשים"), and "box": the piece's position in the photo as integers on a 1000 by 1000 grid (x, y of the top-left corner, width, height).
 3. For each chosen item, give a very short Hebrew reason (up to 8 words), e.g. "אותו צבע, גזרה קצת שונה".
 4. Write "summary": one Hebrew sentence describing the look's style. Write "tip": one short Hebrew sentence on what is missing from the wardrobe to get closer to the look, or an empty string if nothing is missing.
 
@@ -3248,9 +3318,12 @@ ${list}`;
               properties: {
                 summary: { type: "string" },
                 tip: { type: "string" },
-                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "kind", "color", "matches"], properties: {
+                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "kind", "color", "search", "box", "matches", "alternatives"], properties: {
                   name: { type: "string" },
                   kind: { type: "string" },
+                  search: { type: "string" },
+                  box: { type: "object", additionalProperties: false, required: ["x", "y", "width", "height"], properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } } },
+                  alternatives: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "reason"], properties: { id: { type: "string" }, reason: { type: "string" } } } },
                   part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "dress", "shoes", "accessories_up"] },
                   color: { type: "string" },
                   matches: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "reason"], properties: { id: { type: "string" }, reason: { type: "string" } } } },
@@ -3298,7 +3371,22 @@ ${list}`;
             .filter((match) => byId.has(match.id) && sameKind(piece, byId.get(match.id)) && !seen.has(match.id) && seen.add(match.id))
             .slice(0, 3)
             .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
-          return { name: String(piece.name || "").slice(0, 60), part: piece.part, color: /^#[0-9a-f]{6}$/i.test(piece.color) ? piece.color : null, matches };
+          // Nothing of the same kind: other pieces of the same category that suit the look
+          const alternatives = matches.length ? [] : (Array.isArray(piece.alternatives) ? piece.alternatives : [])
+            .filter((match) => byId.has(match.id) && groupOf(byId.get(match.id).part) === groupOf(piece.part) && !seen.has(match.id) && seen.add(match.id))
+            .slice(0, 3)
+            .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
+          const box = piece.box && [piece.box.x, piece.box.y, piece.box.width, piece.box.height].every(Number.isFinite) ? piece.box : null;
+          return {
+            name: String(piece.name || "").slice(0, 60),
+            part: piece.part,
+            kind: String(piece.kind || "").slice(0, 30),
+            color: /^#[0-9a-f]{6}$/i.test(piece.color) ? piece.color : null,
+            search: String(piece.search || piece.name || "").slice(0, 80),
+            box,
+            matches,
+            alternatives,
+          };
         });
         return json(200, { summary: String(parsed.summary || ""), tip: String(parsed.tip || ""), pieces });
       }

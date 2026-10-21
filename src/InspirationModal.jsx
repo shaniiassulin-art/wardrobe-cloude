@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowClockwise, Check, ImageSquare, MagicWand, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, Heart, ImageSquare, MagicWand, X } from "@phosphor-icons/react";
 import { fileToUploadDataUrl, fittedImage, imageFallback, thumbUrl } from "./image-files.js";
 import { PRICES } from "./prices.js";
 
 // Upload an inspiration photo (Pinterest, a screenshot...) and get the closest
 // pieces from the wardrobe for each piece in it, then build the look from them.
-export function InspirationModal({ items, wardrobeId, onClose, onCreateLook }) {
+export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onWishlistAdded }) {
   const [photo, setPhoto] = useState(null);
   const [result, setResult] = useState(null);
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Wishlist state per piece of the photo: "saving" or "saved"
+  const [wished, setWished] = useState({});
   const fileRef = useRef(null);
   const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
 
@@ -19,6 +21,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook }) {
     setError("");
     setResult(null);
     setSelected([]);
+    setWished({});
     try {
       setPhoto(await fileToUploadDataUrl(file, 1280, 0.86));
     } catch (err) {
@@ -49,6 +52,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "לא ניתן לנתח את התמונה כרגע");
       setResult(data);
+      setWished({});
       // The best match of every piece is picked to start with
       setSelected([...new Set(data.pieces.map((piece) => piece.matches[0]?.id).filter(Boolean))]);
     } catch (err) {
@@ -62,10 +66,50 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook }) {
   const pick = (piece, id) => {
     setSelected((current) => {
       if (current.includes(id)) return current.filter((entry) => entry !== id);
-      const others = piece.matches.map((match) => match.id).filter((entry) => entry !== id);
+      const others = [...piece.matches, ...(piece.alternatives || [])].map((match) => match.id).filter((entry) => entry !== id);
       return [...current.filter((entry) => !others.includes(entry)), id];
     });
   };
+
+  // Saved only when she asks for it
+  const addToWishlist = async (piece, index) => {
+    setWished((current) => ({ ...current, [index]: "saving" }));
+    setError("");
+    try {
+      const res = await fetch("/api/import/wishlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId },
+        body: JSON.stringify({ name: piece.name, part: piece.part, color: piece.color, search: piece.search, box: piece.box, note: result?.summary || "", imageDataUrl: photo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "לא ניתן להוסיף ל-Wishlist כרגע");
+      setWished((current) => ({ ...current, [index]: "saved" }));
+      onWishlistAdded?.(data);
+    } catch (err) {
+      setWished((current) => ({ ...current, [index]: undefined }));
+      setError(err.message);
+    }
+  };
+
+  const tiles = (piece, list) => (
+    <div className="inspo-matches">
+      {list.map((match) => {
+        const item = byId.get(match.id);
+        if (!item) return null;
+        const on = selected.includes(match.id);
+        return (
+          <button key={match.id} type="button" className={`lb-tile inspo-tile${on ? " is-on" : ""}`} aria-pressed={on} onClick={() => pick(piece, match.id)}>
+            <span className="lb-tile__img">
+              <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
+              <span className="lb-tile__check" aria-hidden="true">{on && <Check size={12} weight="bold" />}</span>
+            </span>
+            <span className="lb-tile__name">{item.name}</span>
+            {match.reason && <small className="inspo-reason">{match.reason}</small>}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="builder-modal-overlay look-builder-overlay" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
@@ -102,26 +146,20 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook }) {
                     {piece.color && <span className="inspo-dot" style={{ background: piece.color }} aria-hidden="true" />}
                     <h3>{piece.name}</h3>
                   </div>
-                  {piece.matches.length ? (
-                    <div className="inspo-matches">
-                      {piece.matches.map((match) => {
-                        const item = byId.get(match.id);
-                        if (!item) return null;
-                        const on = selected.includes(match.id);
-                        return (
-                          <button key={match.id} type="button" className={`lb-tile inspo-tile${on ? " is-on" : ""}`} aria-pressed={on} onClick={() => pick(piece, match.id)}>
-                            <span className="lb-tile__img">
-                              <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
-                              <span className="lb-tile__check" aria-hidden="true">{on && <Check size={12} weight="bold" />}</span>
-                            </span>
-                            <span className="lb-tile__name">{item.name}</span>
-                            {match.reason && <small className="inspo-reason">{match.reason}</small>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="inspo-missing">אין בארון פריט דומה</p>
+                  {piece.matches.length ? tiles(piece, piece.matches) : (
+                    <>
+                      <p className="inspo-missing">אין בארון פריט דומה</p>
+                      {piece.alternatives?.length > 0 && (
+                        <>
+                          <p className="inspo-alt-title">במקום זה, מאותה קטגוריה ובסגנון של הלוק:</p>
+                          {tiles(piece, piece.alternatives)}
+                        </>
+                      )}
+                      <button type="button" className={`inspo-wish${wished[index] === "saved" ? " is-saved" : ""}`} disabled={Boolean(wished[index])} onClick={() => addToWishlist(piece, index)}>
+                        <Heart size={14} weight={wished[index] === "saved" ? "fill" : "regular"} />
+                        <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מוסיף..." : "הוספה ל-Wishlist"}</span>
+                      </button>
+                    </>
                   )}
                 </div>
               ))}

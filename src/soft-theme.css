@@ -689,3 +689,21 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .inspo-matches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .inspo-reason { font-size: 10.5px; line-height: 1.35; color: var(--muted); }
 .inspo-missing { margin: 0; font-size: 12.5px; color: var(--muted); }
+.inspo-alt-title { margin: 8px 0 8px; font-size: 12.5px; color: var(--ink); }
+.inspo-wish { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 7px 13px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer; }
+.inspo-wish.is-saved { background: var(--ink); color: var(--paper); box-shadow: none; }
+.inspo-wish:disabled { cursor: default; }
+
+/* Wishlist */
+.wishlist-view { padding-bottom: 24px; }
+.wishlist-view .gallery-grid { padding-top: 24px; }
+.wishlist-item__img { display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden; border-radius: 22px; background: #ece5db; }
+.wishlist-item__img img { width: 100%; height: 100%; object-fit: cover; }
+.wishlist-item__swatch { width: 46%; aspect-ratio: 1; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+.wishlist-item .gallery-item__name { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.wishlist-item .inspo-dot { width: 11px; height: 11px; }
+.wishlist-item__part { margin: 2px 0 0; font-size: 11px; color: var(--muted); text-align: center; }
+.wishlist-item__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.wishlist-item__shop, .wishlist-item__btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 11px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.wishlist-item__shop { flex: 1 1 100%; justify-content: center; background: var(--ink); color: var(--paper); box-shadow: none; }
+.wishlist-item__btn.is-icon { padding: 6px 9px; color: var(--muted); }

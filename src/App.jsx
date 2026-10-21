@@ -12,6 +12,7 @@ import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { InspirationModal } from "./InspirationModal.jsx";
+import { WishlistView } from "./WishlistView.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
@@ -42,6 +43,7 @@ const TYPES = [
   { id: "wholebody_up", label: "עליוניות", singular: "עליונית" },
   { id: "shoes", label: "נעליים", singular: "נעליים" },
   { id: "accessories_up", label: "אקססוריז", singular: "אקססורי" },
+  { id: "wishlist", label: "Wishlist" },
   { id: "archive", label: "ארכיון" },
 ];
 
@@ -366,7 +368,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       <label className="field">
         <span>קטגוריה</span>
         <select value={draft.part} onChange={(event) => setDraft((current) => ({ ...current, part: event.target.value }))}>
-          {TYPES.filter((type) => !["all", "looks", "luggage", "archive"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+          {TYPES.filter((type) => !["all", "looks", "luggage", "archive", "wishlist"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
         </select>
       </label>
 
@@ -2104,10 +2106,11 @@ export function App() {
   const [items, setItems] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
-  const isWardrobeView = !["looks", "luggage", "archive"].includes(activeType);
+  const isWardrobeView = !["looks", "luggage", "archive", "wishlist"].includes(activeType);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
   const [archived, setArchived] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
   // Look photos opened full screen from the looks page: { look, index }
   const [lookZoom, setLookZoom] = useState(null);
   // Looks found to be photos of the user (for older looks that did not record it)
@@ -2256,6 +2259,25 @@ export function App() {
     } catch {}
   }, [activeWardrobeId]);
 
+  const fetchWishlist = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/import/wishlist?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+        headers: { "x-wardrobe-id": activeWardrobeId },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWishlist(Array.isArray(data) ? data : []);
+      }
+    } catch {}
+  }, [activeWardrobeId]);
+  const removeWishlistItem = async (id) => {
+    const res = await fetch(`/api/import/wishlist/${id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
+      method: "DELETE",
+      headers: { "x-wardrobe-id": activeWardrobeId },
+    });
+    if (res.ok) setWishlist((current) => current.filter((entry) => entry.id !== id));
+  };
+
   const fetchUserProfile = useCallback(async () => {
     try {
       const res = await fetch(`/api/import/user?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
@@ -2279,6 +2301,7 @@ export function App() {
     fetchOutfits();
     fetchUserProfile();
     fetchArchive();
+    fetchWishlist();
 
     // Auto-sync across devices: poll while visible and whenever the tab becomes active.
     // Kept infrequent because every request counts toward the hosting quota.
@@ -2312,7 +2335,7 @@ export function App() {
       window.removeEventListener("focus", onSync);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [activeWardrobeId, fetchWardrobe, fetchSuitcases, fetchOutfits, fetchUserProfile, fetchWardrobesList, fetchArchive]);
+  }, [activeWardrobeId, fetchWardrobe, fetchSuitcases, fetchOutfits, fetchUserProfile, fetchWardrobesList, fetchArchive, fetchWishlist]);
 
   const handleSwitchWardrobe = useCallback((newId) => {
     if (!newId || newId === activeWardrobeId) return;
@@ -2769,6 +2792,8 @@ export function App() {
                 ? `${suitcases.length} ${suitcases.length === 1 ? "מזוודה" : "מזוודות"}`
                 : activeType === "archive"
                 ? `${archived.length} בארכיון`
+                : activeType === "wishlist"
+                ? `${wishlist.length} ${wishlist.length === 1 ? "פריט" : "פריטים"} לקנות`
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
             </p>
             <div className="header-actions">
@@ -2835,7 +2860,7 @@ export function App() {
             </div>
           </div>
           <nav className="category-nav" aria-label="סינון לפי קטגוריה">
-            {TYPES.filter((type) => type.id !== "archive" || archived.length > 0 || activeType === "archive").map((type) => (
+            {TYPES.filter((type) => (type.id !== "archive" || archived.length > 0 || activeType === "archive") && (type.id !== "wishlist" || wishlist.length > 0 || activeType === "wishlist")).map((type) => (
               <button
                 key={type.id}
                 type="button"
@@ -2935,6 +2960,9 @@ export function App() {
           />
         )}
 
+        {activeType === "wishlist" && (
+          <WishlistView items={wishlist} onRemove={removeWishlistItem} />
+        )}
         {activeType === "archive" && (
           <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />
         )}
@@ -3071,6 +3099,7 @@ export function App() {
           wardrobeId={activeWardrobeId}
           onClose={() => setInspirationOpen(false)}
           onCreateLook={(ids) => { setInspirationOpen(false); openLookBuilder(ids, "flatlay"); }}
+          onWishlistAdded={(entry) => setWishlist((current) => [entry, ...current.filter((other) => other.id !== entry.id)])}
         />
       )}
       {builderOpen && (
@@ -3126,7 +3155,7 @@ export function App() {
 
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || selectMode || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || selectMode || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }
