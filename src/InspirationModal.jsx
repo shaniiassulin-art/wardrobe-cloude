@@ -5,6 +5,9 @@ import { PRICES } from "./prices.js";
 
 // Upload an inspiration photo (Pinterest, a screenshot...) and get the closest
 // pieces from the wardrobe for each piece in it, then build the look from them.
+// Same grouping as the server: a piece is only ever swapped for one of the same category
+const groupOf = (part) => ({ upperbody: "top", top: "top", wholebody_up: "jacket", outerwear: "jacket", jacket: "jacket", lowerbody: "bottom", bottom: "bottom", dress: "dress", wholebody: "dress", shoes: "shoes", accessories_up: "accessory", accessory: "accessory" }[part] || part);
+
 export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onWishlistAdded }) {
   const [photo, setPhoto] = useState(null);
   const [result, setResult] = useState(null);
@@ -15,6 +18,12 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
   const [wished, setWished] = useState({});
   const fileRef = useRef(null);
   const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  // Rows opened with "אחר": every other piece of the same category
+  const [otherOpen, setOtherOpen] = useState({});
+  const othersFor = (piece) => {
+    const shown = new Set(piece.options.map((option) => option.id));
+    return items.filter((item) => groupOf(item.part) === groupOf(piece.part) && !shown.has(item.id)).map((item) => ({ id: item.id, reason: "" }));
+  };
 
   const choose = async (file) => {
     if (!file || !(file.type?.startsWith("image/") || /\.(heic|heif)$/i.test(file.name || ""))) return;
@@ -22,6 +31,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
     setResult(null);
     setSelected([]);
     setWished({});
+    setOtherOpen({});
     try {
       setPhoto(await fileToUploadDataUrl(file, 1280, 0.86));
     } catch (err) {
@@ -66,7 +76,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
   const pick = (piece, id) => {
     setSelected((current) => {
       if (current.includes(id)) return current.filter((entry) => entry !== id);
-      const others = piece.options.map((match) => match.id).filter((entry) => entry !== id);
+      const others = [...piece.options, ...othersFor(piece)].map((match) => match.id).filter((entry) => entry !== id);
       return [...current.filter((entry) => !others.includes(entry)), id];
     });
   };
@@ -79,7 +89,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
       const res = await fetch("/api/import/wishlist", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId },
-        body: JSON.stringify({ name: piece.name, part: piece.part, color: piece.color, search: piece.search, box: piece.box, note: result?.summary || "", imageDataUrl: photo }),
+        body: JSON.stringify({ name: piece.name, part: piece.part, color: piece.color, colorName: piece.colorName, description: piece.description, box: piece.box, note: result?.summary || "", imageDataUrl: photo }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "לא ניתן להוסיף ל-Wishlist כרגע");
@@ -144,15 +154,27 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
                 <div key={`${piece.name}-${index}`} className="inspo-piece">
                   <div className="inspo-piece__head">
                     {piece.color && <span className="inspo-dot" style={{ background: piece.color }} aria-hidden="true" />}
-                    <h3>{piece.name}</h3>
+                    <h3>{piece.name}{piece.colorName && <small className="inspo-colorname"> · {piece.colorName}</small>}</h3>
+                    {othersFor(piece).length > 0 && (
+                      <button type="button" className={`inspo-other${otherOpen[index] ? " is-on" : ""}`} aria-expanded={Boolean(otherOpen[index])} onClick={() => setOtherOpen((current) => ({ ...current, [index]: !current[index] }))}>
+                        אחר
+                      </button>
+                    )}
                   </div>
                   {piece.note && <p className="inspo-missing">{piece.note}</p>}
                   {piece.options.length > 0 && tiles(piece, piece.options)}
+                  {otherOpen[index] && (
+                    <>
+                      <p className="inspo-alt-title">פריט אחר מאותה קטגוריה:</p>
+                      {tiles(piece, othersFor(piece))}
+                    </>
+                  )}
                   {piece.level !== "match" && (
                     <>
                       <button type="button" className={`inspo-wish${wished[index] === "saved" ? " is-saved" : ""}`} disabled={Boolean(wished[index])} onClick={() => addToWishlist(piece, index)}>
                         <Heart size={14} weight={wished[index] === "saved" ? "fill" : "regular"} />
-                        <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מוסיף..." : "הוספה ל-Wishlist"}</span>
+                        <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מכין תמונה של הפריט..." : "הוספה ל-Wishlist"}</span>
+                        {!wished[index] && <small>{PRICES.catalogLow}</small>}
                       </button>
                     </>
                   )}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { Check, Trash } from "@phosphor-icons/react";
 
 const PART_LABELS = {
   upperbody: "חולצה",
@@ -9,8 +9,6 @@ const PART_LABELS = {
   shoes: "נעליים",
   accessories_up: "אקססורי",
 };
-
-const shopUrl = (query) => `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(query)}`;
 
 // Pieces missing from the wardrobe, saved from inspiration photos, to look for in stores
 export function WishlistView({ items, onRemove }) {
@@ -27,7 +25,7 @@ export function WishlistView({ items, onRemove }) {
       <div className="empty-wardrobe-container">
         <div className="empty-wardrobe-card">
           <h2 className="empty-wardrobe-title">ה-Wishlist ריק</h2>
-          <p className="empty-wardrobe-text">כשתעלי תמונת השראה בעמוד הלוקים, אפשר לשמור כאן פריטים שאין לך בארון ולחפש אותם בחנויות.</p>
+          <p className="empty-wardrobe-text">כשתעלי תמונת השראה בעמוד הלוקים, אפשר לשמור כאן פריטים שאין לך בארון, עם תמונה ותיאור מדויק.</p>
         </div>
       </div>
     );
@@ -47,11 +45,9 @@ export function WishlistView({ items, onRemove }) {
               {item.color && <span className="inspo-dot" style={{ background: item.color }} aria-hidden="true" />}
               {item.name}
             </p>
-            {PART_LABELS[item.part] && <p className="wishlist-item__part">{PART_LABELS[item.part]}</p>}
+            <p className="wishlist-item__part">{[PART_LABELS[item.part], item.colorName].filter(Boolean).join(" · ")}</p>
+            {item.description && <p className="wishlist-item__desc">{item.description}</p>}
             <div className="wishlist-item__actions">
-              <a className="wishlist-item__shop" href={shopUrl(item.search || item.name)} target="_blank" rel="noreferrer">
-                <MagnifyingGlass size={13} aria-hidden="true" /> חיפוש בחנויות
-              </a>
               <button type="button" className="wishlist-item__btn" disabled={busy === item.id} onClick={() => remove(item, true)} aria-label={`קניתי את ${item.name}`}>
                 <Check size={13} aria-hidden="true" /> קניתי
               </button>

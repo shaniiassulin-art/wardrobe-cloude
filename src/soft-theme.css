@@ -710,3 +710,9 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .wishlist-item__shop, .wishlist-item__btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 11px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
 .wishlist-item__shop { flex: 1 1 100%; justify-content: center; background: var(--ink); color: var(--paper); box-shadow: none; }
 .wishlist-item__btn.is-icon { padding: 6px 9px; color: var(--muted); }
+.inspo-other { margin-inline-start: auto; padding: 5px 12px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.inspo-other.is-on { background: var(--ink); color: var(--paper); box-shadow: none; }
+.inspo-colorname { font-size: 12px; font-weight: 400; color: var(--muted); }
+.inspo-wish small { font-size: 10.5px; opacity: .7; }
+.wishlist-item__img img { object-fit: contain; padding: 10%; }
+.wishlist-item__desc { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink); text-align: center; }
