@@ -2860,7 +2860,7 @@ export function App() {
             </div>
           </div>
           <nav className="category-nav" aria-label="סינון לפי קטגוריה">
-            {TYPES.filter((type) => (type.id !== "archive" || archived.length > 0 || activeType === "archive") && (type.id !== "wishlist" || wishlist.length > 0 || activeType === "wishlist")).map((type) => (
+            {TYPES.filter((type) => (type.id !== "archive" || archived.length > 0 || activeType === "archive") && true).map((type) => (
               <button
                 key={type.id}
                 type="button"
@@ -2961,7 +2961,7 @@ export function App() {
         )}
 
         {activeType === "wishlist" && (
-          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onRemove={removeWishlistItem} onUpdate={(entry) => setWishlist((current) => current.map((other) => other.id === entry.id ? entry : other))} />
+          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onRemove={removeWishlistItem} onUpdate={(entry) => setWishlist((current) => current.map((other) => other.id === entry.id ? entry : other))} onAdded={(entry) => setWishlist((current) => [entry, ...current.filter((other) => other.id !== entry.id)])} />
         )}
         {activeType === "archive" && (
           <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />

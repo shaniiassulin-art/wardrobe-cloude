@@ -726,3 +726,22 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .wish-make { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .wish-make .lb-button { flex: 1 1 140px; white-space: nowrap; }
 .wishlist-item__desc { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--ink); text-align: center; }
+.wishlist-bar { display: flex; justify-content: flex-start; margin: 22px 52px 0; }
+@media (max-width: 1100px) { .wishlist-bar { margin-inline: 32px; } }
+@media (max-width: 720px) { .wishlist-bar { margin: 16px 20px 0; } }
+@media (max-width: 520px) { .wishlist-bar { margin: 14px 12px 0; } }
+.wishlist-add-btn { display: inline-flex; align-items: center; gap: 6px; }
+.empty-wardrobe-card .wishlist-add-btn { margin-top: 14px; }
+.wish-add__photo + .wish-add__photo { border-top: 1px solid var(--line); }
+.wish-add__head { display: flex; align-items: center; gap: 12px; }
+.wish-add__head > img { width: 64px; height: 64px; flex: none; border-radius: 12px; object-fit: cover; box-shadow: inset 0 0 0 1px var(--line); }
+.wish-add__status { flex: 1 1 auto; font-size: 13px; color: var(--muted); }
+.wish-add__status span { display: inline-flex; align-items: center; gap: 6px; }
+.wish-add__piece { display: flex; gap: 12px; margin-top: 14px; }
+.wish-add__piece > img { width: 104px; height: 128px; flex: none; border-radius: 14px; object-fit: cover; background: #ece5db; }
+.wish-add__text { display: grid; align-content: start; gap: 3px; min-width: 0; }
+.wish-add__text strong { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.wish-add__text small { font-size: 12px; color: var(--muted); }
+.wish-add__text p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink); }
+.wish-add__text .inspo-wish { justify-self: start; margin-top: 6px; }
+.wish-add__more { margin: 4px 0 8px; }

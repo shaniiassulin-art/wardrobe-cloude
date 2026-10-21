@@ -1684,6 +1684,7 @@ const LONG_ROUTES = [
   { method: "POST", pattern: /^\/api\/import\/outfits\/auto-generate$/ },
   { method: "POST", pattern: /^\/api\/import\/inspiration$/ },
   { method: "POST", pattern: /^\/api\/import\/wishlist\/[a-f0-9-]{36}\/generate$/i },
+  { method: "POST", pattern: /^\/api\/import\/wishlist\/analyze$/ },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/modeled$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/regenerate$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/open-version$/i },
@@ -3277,6 +3278,60 @@ Respond in strict JSON format:
         const list = await loadWishlist(wId);
         await saveWishlist(wId, [record, ...list]);
         return json(200, record);
+      }
+      if (url.pathname === "/api/import/wishlist/analyze" && request.method === "POST") {
+        // A screenshot or photo of pieces she wants: name, exact color and description
+        // of each, and where it is in the picture (to cut it out). Nothing is saved here.
+        const wId = resolveWardrobeId(request, url);
+        const key = setting("OPENAI_API_KEY");
+        if (!key) return json(400, { error: "צריך מפתח של OpenAI כדי לזהות את הפריטים." });
+        const input = await body(request);
+        const photo = await sharp(decodeImage(input).data, { failOnError: false }).rotate()
+          .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+          .flatten({ background: "#ffffff" }).jpeg({ quality: 85 }).toBuffer();
+        const prompt = `The image is a photo or a screenshot (for example from a shop or Pinterest) of clothing, shoes or accessories the user wants to buy. List every distinct wearable piece that is a main subject of the image (at most 6; ignore tiny background items, the person's body, and interface elements like buttons or text). For each write:
+- "name": a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "משקפי שמש חומים")
+- "part": a category id: upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats, sunglasses
+- "colorName": the exact Hebrew color name, as specific as possible (e.g. "חום קרמל", "בז' חולי", "כחול נייבי"), and "color": the hex color matching it exactly
+- "description": an exact Hebrew description, 12-25 words: type, cut and fit, length, material and texture, neckline/collar, sleeves, closures, pattern and distinctive details
+- "box": the piece's position as integers on a 1000 by 1000 grid (x, y of the top-left corner, width, height), tight around the piece`;
+        const res = await fetch(`${apiBaseUrl()}/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${checkApiKey(key, "OpenAI")}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: setting("OPENAI_VISION_MODEL", "gpt-4o-mini"),
+            temperature: 0.2,
+            messages: [{ role: "user", content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photo.toString("base64")}`, detail: "high" } },
+            ] }],
+            response_format: { type: "json_schema", json_schema: { name: "wishlist_pieces", strict: true, schema: {
+              type: "object", additionalProperties: false, required: ["pieces"],
+              properties: { pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "color", "colorName", "description", "box"], properties: {
+                name: { type: "string" },
+                part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "dress", "shoes", "accessories_up"] },
+                color: { type: "string" },
+                colorName: { type: "string" },
+                description: { type: "string" },
+                box: { type: "object", additionalProperties: false, required: ["x", "y", "width", "height"], properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } } },
+              } } } },
+            } } },
+          }),
+        });
+        const completion = await res.json().catch(() => ({}));
+        if (!res.ok) throw openAIError(res.status, completion, "לא ניתן לזהות את הפריטים כרגע");
+        await recordSpend("זיהוי פריטים ל-Wishlist", estimateTextUsd(completion.usage), wId);
+        let parsed;
+        try { parsed = JSON.parse(completion.choices?.[0]?.message?.content || "{}"); } catch { parsed = {}; }
+        const pieces = (Array.isArray(parsed.pieces) ? parsed.pieces : []).slice(0, 6).map((piece) => ({
+          name: String(piece.name || "").slice(0, 60),
+          part: piece.part,
+          color: /^#[0-9a-f]{6}$/i.test(piece.color) ? piece.color : null,
+          colorName: String(piece.colorName || "").slice(0, 40),
+          description: String(piece.description || "").slice(0, 300),
+          box: piece.box && [piece.box.x, piece.box.y, piece.box.width, piece.box.height].every(Number.isFinite) ? piece.box : null,
+        })).filter((piece) => piece.name);
+        return json(200, { pieces });
       }
       const wishMatch = url.pathname.match(/^\/api\/import\/wishlist\/([a-f0-9-]{36})(?:\/(image|photo|ai|generate))?$/i);
       if (wishMatch) {

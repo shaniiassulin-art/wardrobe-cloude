@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ArrowClockwise, Check, MagicWand, Trash, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Check, MagicWand, Plus, Trash, X } from "@phosphor-icons/react";
+import { WishlistAddModal } from "./WishlistAddModal.jsx";
 import { ImageLightbox } from "./ImageLightbox.jsx";
 import { PRICES } from "./prices.js";
 
@@ -13,8 +14,15 @@ const PART_LABELS = {
 };
 
 // Pieces missing from the wardrobe, saved from inspiration photos
-export function WishlistView({ items, wardrobeId, onRemove, onUpdate }) {
+export function WishlistView({ items, wardrobeId, onRemove, onUpdate, onAdded }) {
   const [busy, setBusy] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const addModal = adding && <WishlistAddModal wardrobeId={wardrobeId} onAdded={onAdded} onClose={() => setAdding(false)} />;
+  const addButton = (
+    <button type="button" className="create-look-btn wishlist-add-btn" onClick={() => setAdding(true)}>
+      <Plus size={15} aria-hidden="true" /> הוספת פריטים
+    </button>
+  );
   const [openId, setOpenId] = useState(null);
   const open = items.find((item) => item.id === openId) || null;
 
@@ -29,14 +37,17 @@ export function WishlistView({ items, wardrobeId, onRemove, onUpdate }) {
       <div className="empty-wardrobe-container">
         <div className="empty-wardrobe-card">
           <h2 className="empty-wardrobe-title">ה-Wishlist ריק</h2>
-          <p className="empty-wardrobe-text">כשתעלי תמונת השראה בעמוד הלוקים, אפשר לשמור כאן פריטים שאין לך בארון, עם תמונה ותיאור מדויק.</p>
+          <p className="empty-wardrobe-text">אפשר להוסיף כאן צילומי מסך ותמונות של פריטים שאת רוצה, או לשמור פריטים מתמונת השראה בעמוד הלוקים.</p>
+          {addButton}
         </div>
+        {addModal}
       </div>
     );
   }
 
   return (
     <section className="wishlist-view" aria-label="Wishlist">
+      <div className="wishlist-bar">{addButton}</div>
       <div className="gallery-grid wishlist-grid">
         {items.map((item) => {
           const cover = item.aiImage || item.image || item.photo;
@@ -65,6 +76,7 @@ export function WishlistView({ items, wardrobeId, onRemove, onUpdate }) {
           );
         })}
       </div>
+      {addModal}
       {open && <WishlistItemModal item={open} wardrobeId={wardrobeId} onUpdate={onUpdate} onClose={() => setOpenId(null)} />}
     </section>
   );
