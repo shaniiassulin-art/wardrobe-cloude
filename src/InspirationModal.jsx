@@ -33,7 +33,8 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
     setWished({});
     setOtherOpen({});
     try {
-      setPhoto(await fileToUploadDataUrl(file, 1280, 0.86));
+      // Kept sharp: a piece saved to the Wishlist is cut out of this photo
+      setPhoto(await fileToUploadDataUrl(file, 2048, 0.93));
     } catch (err) {
       setError(err.message || "לא ניתן לפתוח את התמונה.");
     }
@@ -173,8 +174,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
                     <>
                       <button type="button" className={`inspo-wish${wished[index] === "saved" ? " is-saved" : ""}`} disabled={Boolean(wished[index])} onClick={() => addToWishlist(piece, index)}>
                         <Heart size={14} weight={wished[index] === "saved" ? "fill" : "regular"} />
-                        <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מכין תמונה של הפריט..." : "הוספה ל-Wishlist"}</span>
-                        {!wished[index] && <small>{PRICES.catalogLow}</small>}
+                        <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מוסיף..." : "הוספה ל-Wishlist"}</span>
                       </button>
                     </>
                   )}

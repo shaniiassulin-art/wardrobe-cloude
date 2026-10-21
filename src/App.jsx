@@ -2961,7 +2961,7 @@ export function App() {
         )}
 
         {activeType === "wishlist" && (
-          <WishlistView items={wishlist} onRemove={removeWishlistItem} />
+          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onRemove={removeWishlistItem} onUpdate={(entry) => setWishlist((current) => current.map((other) => other.id === entry.id ? entry : other))} />
         )}
         {activeType === "archive" && (
           <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />

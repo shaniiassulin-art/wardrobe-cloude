@@ -1683,7 +1683,7 @@ const LONG_ROUTES = [
   { method: "POST", pattern: /^\/api\/import\/outfits\/generate$/ },
   { method: "POST", pattern: /^\/api\/import\/outfits\/auto-generate$/ },
   { method: "POST", pattern: /^\/api\/import\/inspiration$/ },
-  { method: "POST", pattern: /^\/api\/import\/wishlist$/ },
+  { method: "POST", pattern: /^\/api\/import\/wishlist\/[a-f0-9-]{36}\/generate$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/modeled$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/regenerate$/i },
   { method: "POST", pattern: /^\/api\/import\/wardrobe\/import-[a-f0-9-]{36}\/open-version$/i },
@@ -2622,7 +2622,7 @@ Respond in strict JSON format:
   // Deleted items go to an archive (photos kept) so they can be brought back
   const archiveKey = (wardrobeId) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, "archive.json");
   const wishlistKey = (wardrobeId) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, "wishlist.json");
-  const wishlistImageKey = (wardrobeId, id) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, `wishlist/${id}.img`);
+  const wishlistImageKey = (wardrobeId, id, variant) => getWardrobeKeys(wardrobeId).importedFile.replace(/library\.json$/, `wishlist/${id}${variant ? `-${variant}` : ""}.img`);
   async function loadWishlist(wardrobeId = "user-shani") {
     return (await store.getJSON(wishlistKey(wardrobeId)).catch(() => null)) || [];
   }
@@ -3220,7 +3220,9 @@ Respond in strict JSON format:
         await saveImported(wId, records);
         return json(200, record);
       }
-      // Wishlist: pieces she does not have yet, saved from an inspiration photo to look for in stores
+      // Wishlist: pieces she does not have yet, saved from an inspiration photo. Saving
+      // is free: the piece is cut out of the photo (no AI) and the whole photo is kept
+      // too. A clean catalog photo can be made later with AI, on request.
       if (url.pathname === "/api/import/wishlist" && request.method === "GET") {
         return json(200, await loadWishlist(resolveWardrobeId(request, url)));
       }
@@ -3234,54 +3236,31 @@ Respond in strict JSON format:
         const colorName = String(input.colorName || "").trim().slice(0, 40);
         const description = String(input.description || "").trim().slice(0, 300);
         let hasImage = false;
+        let hasPhoto = false;
         if (input.imageDataUrl) {
           try {
             const photo = await sharp(decodeImage(input).data, { failOnError: false }).rotate().flatten({ background: "#ffffff" }).toBuffer();
             const meta = await sharp(photo).metadata();
+            // The whole inspiration photo, to go back to
+            await store.setBytes(wishlistImageKey(wId, id, "photo"), await sharp(photo).resize(2048, 2048, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer());
+            hasPhoto = true;
             let crop = sharp(photo);
             const box = input.box;
             if (box && [box.x, box.y, box.width, box.height].every(Number.isFinite) && box.width > 0 && box.height > 0) {
-              // The AI's box is rough, so leave a generous margin around it
-              const pad = 0.18;
+              // The AI's box is rough, so leave a margin around it
+              const pad = 0.12;
               const x0 = Math.max(0, (box.x / 1000 - (box.width / 1000) * pad) * meta.width);
               const y0 = Math.max(0, (box.y / 1000 - (box.height / 1000) * pad) * meta.height);
               const x1 = Math.min(meta.width, ((box.x + box.width) / 1000 + (box.width / 1000) * pad) * meta.width);
               const y1 = Math.min(meta.height, ((box.y + box.height) / 1000 + (box.height / 1000) * pad) * meta.height);
               if (x1 - x0 > 24 && y1 - y0 > 24) crop = sharp(photo).extract({ left: Math.round(x0), top: Math.round(y0), width: Math.round(x1 - x0), height: Math.round(y1 - y0) });
             }
-            const cropped = await crop.png().toBuffer();
-            let bytes = null;
-            // A clear product photo of just that piece, made like a wardrobe catalog photo
-            const key = setting("OPENAI_API_KEY");
-            if (key) {
-              try {
-                const chromaKey = chooseChromaKey(color || "#808080");
-                const prompt = buildGarmentPrompt({ name, part: input.part, color: color || undefined, tags: [colorName, description].filter(Boolean) }, chromaKey)
-                  + (description ? `\nExact description of the piece: ${description}` : "")
-                  + (colorName ? `\nExact color: ${colorName} (${color || "as in the photo"}). Match this color precisely.` : "");
-                const generated = await openAIEdit({
-                  key,
-                  baseUrl: apiBaseUrl(),
-                  model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
-                  quality: setting("OPENAI_CATALOG_QUALITY", "low"),
-                  size: "1024x1024",
-                  images: [{ data: cropped, mime: "image/png", name: "piece.png" }],
-                  prompt,
-                  action: "תמונה ל-Wishlist",
-                  wardrobeId: wId,
-                });
-                let clean;
-                try { clean = await removeChromaBackground(generated, chromaKey, { tolerance: 48 }); } catch { clean = (await processChromaBackground(generated, chromaKey, { tolerance: 58 })).bytes; }
-                bytes = await sharp(clean).trim({ threshold: 1 }).resize(700, 700, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
-              } catch (error) {
-                console.warn("Wishlist product photo failed, keeping the crop:", error.message);
-              }
-            }
-            if (!bytes) bytes = await sharp(cropped).resize(600, 600, { fit: "inside", withoutEnlargement: true }).png().toBuffer();
-            await store.setBytes(wishlistImageKey(wId, id), bytes);
+            // Full resolution of the original, high quality
+            await store.setBytes(wishlistImageKey(wId, id), await crop.jpeg({ quality: 94, chromaSubsampling: "4:4:4" }).toBuffer());
             hasImage = true;
           } catch {}
         }
+        const q = `?wardrobeId=${encodeURIComponent(wId)}`;
         const record = {
           id,
           name,
@@ -3290,27 +3269,69 @@ Respond in strict JSON format:
           colorName,
           description,
           note: String(input.note || "").trim().slice(0, 160),
-          image: hasImage ? `/api/import/wishlist/${id}/image?wardrobeId=${encodeURIComponent(wId)}` : null,
+          image: hasImage ? `/api/import/wishlist/${id}/image${q}` : null,
+          photo: hasPhoto ? `/api/import/wishlist/${id}/photo${q}` : null,
+          aiImage: null,
           createdAt: new Date().toISOString(),
         };
         const list = await loadWishlist(wId);
         await saveWishlist(wId, [record, ...list]);
         return json(200, record);
       }
-      const wishMatch = url.pathname.match(/^\/api\/import\/wishlist\/([a-f0-9-]{36})(\/image)?$/i);
+      const wishMatch = url.pathname.match(/^\/api\/import\/wishlist\/([a-f0-9-]{36})(?:\/(image|photo|ai|generate))?$/i);
       if (wishMatch) {
         const wId = resolveWardrobeId(request, url);
-        if (wishMatch[2] && (request.method === "GET" || request.method === "HEAD")) {
-          // (items saved before the clear product photos were kept as .jpg)
-          const bytes = (await store.getBytes(wishlistImageKey(wId, wishMatch[1]))) || (await store.getBytes(wishlistImageKey(wId, wishMatch[1]).replace(/\.img$/, ".jpg")));
+        const [, wishId, wishPart] = wishMatch;
+        if (["image", "photo", "ai"].includes(wishPart) && (request.method === "GET" || request.method === "HEAD")) {
+          const variant = wishPart === "image" ? undefined : wishPart;
+          // (items saved earlier were kept as .jpg)
+          const bytes = (await store.getBytes(wishlistImageKey(wId, wishId, variant)))
+            || (!variant ? await store.getBytes(wishlistImageKey(wId, wishId).replace(/\.img$/, ".jpg")) : null);
           if (!bytes) return json(404, { error: "Not found" });
-          return imageResponse(bytes, { contentType: bytes[0] === 0x89 ? "image/png" : "image/jpeg", head: request.method === "HEAD" });
+          return imageResponse(bytes, { contentType: bytes[0] === 0x89 ? "image/png" : "image/jpeg", cache: variant === "ai" ? "private, max-age=60" : undefined, head: request.method === "HEAD" });
         }
-        if (!wishMatch[2] && request.method === "DELETE") {
+        if (wishPart === "generate" && request.method === "POST") {
+          // A clean catalog photo of the piece, made from the cut-out, like a wardrobe photo
+          const key = setting("OPENAI_API_KEY");
+          if (!key) return json(400, { error: "צריך מפתח של OpenAI כדי להכין תמונה." });
           const list = await loadWishlist(wId);
-          await saveWishlist(wId, list.filter((entry) => entry.id !== wishMatch[1]));
-          await store.delete(wishlistImageKey(wId, wishMatch[1])).catch(() => {});
-          await store.delete(wishlistImageKey(wId, wishMatch[1]).replace(/\.img$/, ".jpg")).catch(() => {});
+          const record = list.find((entry) => entry.id === wishId);
+          if (!record) return json(404, { error: "הפריט לא נמצא ב-Wishlist." });
+          const input = await body(request);
+          const quality = input.quality === "medium" ? "medium" : "low";
+          const source = (input.source === "photo" ? await store.getBytes(wishlistImageKey(wId, wishId, "photo")) : null)
+            || (await store.getBytes(wishlistImageKey(wId, wishId)))
+            || (await store.getBytes(wishlistImageKey(wId, wishId).replace(/\.img$/, ".jpg")))
+            || (await store.getBytes(wishlistImageKey(wId, wishId, "photo")));
+          if (!source) return json(404, { error: "אין תמונה לפריט הזה." });
+          const chromaKey = chooseChromaKey(record.color || "#808080");
+          const prompt = buildGarmentPrompt({ name: record.name, part: record.part, color: record.color || undefined, tags: [record.colorName, record.description].filter(Boolean) }, chromaKey)
+            + (record.description ? `\nExact description of the piece: ${record.description}` : "")
+            + (record.colorName ? `\nExact color: ${record.colorName} (${record.color || "as in the photo"}). Match this color precisely.` : "");
+          const generated = await openAIEdit({
+            key,
+            baseUrl: apiBaseUrl(),
+            model: setting("OPENAI_GARMENT_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")),
+            quality,
+            size: "1024x1024",
+            images: [{ data: await sharp(source).png().toBuffer(), mime: "image/png", name: "piece.png" }],
+            prompt,
+            action: "תמונת AI לפריט ב-Wishlist",
+            wardrobeId: wId,
+          });
+          let clean;
+          try { clean = await removeChromaBackground(generated, chromaKey, { tolerance: 48 }); } catch { clean = (await processChromaBackground(generated, chromaKey, { tolerance: 58 })).bytes; }
+          await store.setBytes(wishlistImageKey(wId, wishId, "ai"), await sharp(clean).png().toBuffer());
+          record.aiImage = `/api/import/wishlist/${wishId}/ai?wardrobeId=${encodeURIComponent(wId)}&t=${Date.now()}`;
+          record.aiQuality = quality;
+          await saveWishlist(wId, list);
+          return json(200, record);
+        }
+        if (!wishPart && request.method === "DELETE") {
+          const list = await loadWishlist(wId);
+          await saveWishlist(wId, list.filter((entry) => entry.id !== wishId));
+          for (const variant of [undefined, "photo", "ai"]) await store.delete(wishlistImageKey(wId, wishId, variant)).catch(() => {});
+          await store.delete(wishlistImageKey(wId, wishId).replace(/\.img$/, ".jpg")).catch(() => {});
           return json(200, { deleted: true });
         }
       }
