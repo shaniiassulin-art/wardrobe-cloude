@@ -3383,7 +3383,8 @@ Respond in strict JSON format:
           const prompt = buildGarmentPrompt({ name: piece.name, part: piece.part, color: piece.color || undefined, tags: [piece.colorName, piece.description].filter(Boolean) }, chromaKey)
             + (piece.description ? `\nExact description of the piece: ${piece.description}` : "")
             + (piece.colorName ? `\nExact color: ${piece.colorName} (${piece.color || "as in the photo"}). Match this color precisely.` : "")
-            + where;
+            + where
+            + (String(input.note || "").trim() ? `\nUser direction for this photo: ${String(input.note).trim().slice(0, 400)}` : "");
           const generated = await openAIEdit({
             key,
             baseUrl: apiBaseUrl(),

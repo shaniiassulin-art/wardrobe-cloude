@@ -76,6 +76,8 @@ function WishlistEntryModal({ entry, wardrobeId, onChange, onRemoved, onClose })
   const [making, setMaking] = useState(null); // `${pid}:${quality}`
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
+  // Notes for the AI, per piece
+  const [notes, setNotes] = useState({});
   const gallery = [
     ...(entry.photo ? [{ src: entry.photo, alt: "תמונת ההשראה" }] : []),
     ...entry.pieces.filter((piece) => piece.aiImage).map((piece) => ({ src: piece.aiImage, alt: piece.name })),
@@ -88,7 +90,7 @@ function WishlistEntryModal({ entry, wardrobeId, onChange, onRemoved, onClose })
       const res = await fetch(`/api/import/wishlist/${entry.id}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId },
-        body: JSON.stringify({ pieceId: piece.pid, quality }),
+        body: JSON.stringify({ pieceId: piece.pid, quality, note: notes[piece.pid] || "" }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "לא ניתן להכין תמונה כרגע");
@@ -153,6 +155,10 @@ function WishlistEntryModal({ entry, wardrobeId, onChange, onRemoved, onClose })
                   <img src={piece.aiImage} alt={piece.name} />
                 </button>
               )}
+              <label className="wish-note">
+                <span>הערות ל-AI לתמונה <small>אופציונלי</small></span>
+                <textarea className="lb-input" rows={2} value={notes[piece.pid] || ""} disabled={Boolean(making)} onChange={(event) => setNotes((current) => ({ ...current, [piece.pid]: event.target.value }))} placeholder="למשל: שרוולים ארוכים, בלי החגורה, לשמור על הכפתורים הזהובים" />
+              </label>
               <div className="wish-make">
                 {["low", "medium"].map((quality) => {
                   const on = making === `${piece.pid}:${quality}`;

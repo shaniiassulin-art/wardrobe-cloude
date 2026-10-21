@@ -874,3 +874,8 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
   .look-tile.is-photo .gallery-item__main { aspect-ratio: .8; }
 }
 .wishlist-item__piece-name { font-weight: 500; }
+.wish-note { display: grid; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--ink); }
+.wish-note small { font-size: 11.5px; color: var(--muted); }
+.wish-note textarea { resize: vertical; }
+.item-sheet__note-label { display: block; margin: 14px 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.item-sheet__note-label small { font-weight: 400; font-size: 11.5px; color: var(--muted); }

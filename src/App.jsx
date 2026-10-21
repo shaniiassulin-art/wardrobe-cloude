@@ -793,13 +793,14 @@ function ItemViewer({ item, modelRefUrl = null, suitcaseCount = 0, onPack, onCre
             <p className="item-sheet__note">{item.originalImage
               ? "תיווצר גרסה חדשה מהתמונה המקורית שהעלית. תוכלי להשוות ולבחור."
               : "לפריט הזה לא נשמרה תמונה מקורית, אז הגרסה החדשה תיווצר מהתמונה שבארון. תוכלי להשוות ולבחור."} החיוב הוא על היצירה, גם אם תשאירי את הנוכחית.</p>
+            <label className="item-sheet__note-label" htmlFor={`redo-note-${item.id}`}>הערות ל-AI לתמונה החדשה <small>אופציונלי</small></label>
             <textarea
+              id={`redo-note-${item.id}`}
               className="item-sheet__textarea"
-              rows={2}
+              rows={3}
               value={redoPrompt}
               onChange={(event) => setRedoPrompt(event.target.value)}
-              placeholder={`הערה ל-AI (אופציונלי). ${AI_NOTE_HINT}`}
-              aria-label="הערה ל-AI לעיבוד מחדש"
+              placeholder={AI_NOTE_HINT}
             />
             <div className="item-sheet__redo-actions">
               <button type="button" className="secondary-button" disabled={Boolean(redoing)} onClick={() => handleRedo("low")}>
