@@ -11,6 +11,7 @@ import { PRICES, autoLooksPrice, lookOnModelPrice } from "./prices.js";
 import { FitPicker } from "./FitPicker.jsx";
 import { ArchiveView } from "./ArchiveView.jsx";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
+import { InspirationModal } from "./InspirationModal.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
@@ -2113,6 +2114,7 @@ export function App() {
   const [photoLooks, setPhotoLooks] = useState({});
   const [packingLookId, setPackingLookId] = useState(null);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [inspirationOpen, setInspirationOpen] = useState(false);
   const [builderMode, setBuilderMode] = useState("flatlay");
   const [autoModalOpen, setAutoModalOpen] = useState(false);
   const [builderInitialItems, setBuilderInitialItems] = useState([]);
@@ -2854,6 +2856,10 @@ export function App() {
               <button type="button" className="secondary-header-btn" onClick={() => openLookBuilder([], "modeled")}>
                 <span>לוק על מודל</span>
               </button>
+              <button type="button" className="secondary-header-btn" onClick={() => setInspirationOpen(true)}>
+                <span className="label-long">השראה מתמונה</span>
+                <span className="label-short">השראה</span>
+              </button>
               <button type="button" className="create-auto-btn" onClick={() => setAutoModalOpen(true)}>
                 <span className="label-long">יצירה אוטומטית</span>
                 <span className="label-short">אוטומטי</span>
@@ -3059,6 +3065,14 @@ export function App() {
         />
       )}
 
+      {inspirationOpen && (
+        <InspirationModal
+          items={items}
+          wardrobeId={activeWardrobeId}
+          onClose={() => setInspirationOpen(false)}
+          onCreateLook={(ids) => { setInspirationOpen(false); openLookBuilder(ids, "flatlay"); }}
+        />
+      )}
       {builderOpen && (
         <CustomOutfitModal
           items={items}
@@ -3112,7 +3126,7 @@ export function App() {
 
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || selectMode || Boolean(selectedItem) || builderOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || selectMode || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }

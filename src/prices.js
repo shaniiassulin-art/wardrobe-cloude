@@ -7,6 +7,7 @@
 //   Garment on me, medium quality (1536×1024):               ~$0.041 + 2 photos in ≈ 20 agorot
 //   Look on me, medium quality (1024×1024), you + N pieces:  ~$0.053 + N+1 photos in ≈ 25–40 agorot
 //   Text tasks with gpt-4o-mini (complete a look, tags):     well under 1 agora
+//   Inspiration photo (gpt-4o-mini reads the photo + list):   about 1 agora
 //   Flat lay looks and suitcase layouts:                     free, made on the server without AI
 
 export const PRICES = {
@@ -14,6 +15,7 @@ export const PRICES = {
   catalogMedium: "כ-22 אג׳",
   modeledItem: "כ-20 אג׳",
   textAI: "פחות מאגורה",
+  inspiration: "כ-1 אג׳",
   free: "חינם",
 };
 

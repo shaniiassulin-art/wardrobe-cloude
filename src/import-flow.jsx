@@ -486,6 +486,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
   }, [setup, importMode, importFreeGarments]);
 
   useEffect(() => {
+    // While another window is open (a look, inspiration...) a pasted or dropped photo is not an import
+    if (hidden) return undefined;
     let depth = 0;
     const onDragEnter = (event) => { if (![...event.dataTransfer.types].includes("Files")) return; event.preventDefault(); depth += 1; setDragging(true); };
     const onDragOver = (event) => { if ([...event.dataTransfer.types].includes("Files")) event.preventDefault(); };
@@ -494,7 +496,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved, visib
     const onPaste = (event) => { const files = [...event.clipboardData.files]; if (files.some((file) => file.type.startsWith("image/"))) { event.preventDefault(); submitFiles(files); } };
     window.addEventListener("dragenter", onDragEnter); window.addEventListener("dragover", onDragOver); window.addEventListener("dragleave", onDragLeave); window.addEventListener("drop", onDrop); window.addEventListener("paste", onPaste);
     return () => { window.removeEventListener("dragenter", onDragEnter); window.removeEventListener("dragover", onDragOver); window.removeEventListener("dragleave", onDragLeave); window.removeEventListener("drop", onDrop); window.removeEventListener("paste", onPaste); };
-  }, [submitFiles]);
+  }, [submitFiles, hidden]);
 
   const perform = async (job, stage, action, prompt = "", quality) => {
     setBusyId(job.id); setError("");
