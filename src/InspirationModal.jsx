@@ -54,7 +54,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
       setResult(data);
       setWished({});
       // The best match of every piece is picked to start with
-      setSelected([...new Set(data.pieces.map((piece) => piece.matches[0]?.id).filter(Boolean))]);
+      setSelected([...new Set(data.pieces.filter((piece) => piece.level === "match" || piece.level === "kind").map((piece) => piece.options[0]?.id).filter(Boolean))]);
     } catch (err) {
       setError(err.message || "לא ניתן לנתח את התמונה כרגע");
     } finally {
@@ -66,7 +66,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
   const pick = (piece, id) => {
     setSelected((current) => {
       if (current.includes(id)) return current.filter((entry) => entry !== id);
-      const others = [...piece.matches, ...(piece.alternatives || [])].map((match) => match.id).filter((entry) => entry !== id);
+      const others = piece.options.map((match) => match.id).filter((entry) => entry !== id);
       return [...current.filter((entry) => !others.includes(entry)), id];
     });
   };
@@ -146,15 +146,10 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
                     {piece.color && <span className="inspo-dot" style={{ background: piece.color }} aria-hidden="true" />}
                     <h3>{piece.name}</h3>
                   </div>
-                  {piece.matches.length ? tiles(piece, piece.matches) : (
+                  {piece.note && <p className="inspo-missing">{piece.note}</p>}
+                  {piece.options.length > 0 && tiles(piece, piece.options)}
+                  {piece.level !== "match" && (
                     <>
-                      <p className="inspo-missing">אין בארון פריט דומה</p>
-                      {piece.alternatives?.length > 0 && (
-                        <>
-                          <p className="inspo-alt-title">אפשרויות מאותה קטגוריה בארון שלך:</p>
-                          {tiles(piece, piece.alternatives)}
-                        </>
-                      )}
                       <button type="button" className={`inspo-wish${wished[index] === "saved" ? " is-saved" : ""}`} disabled={Boolean(wished[index])} onClick={() => addToWishlist(piece, index)}>
                         <Heart size={14} weight={wished[index] === "saved" ? "fill" : "regular"} />
                         <span>{wished[index] === "saved" ? "נוסף ל-Wishlist" : wished[index] === "saving" ? "מוסיף..." : "הוספה ל-Wishlist"}</span>

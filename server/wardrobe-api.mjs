@@ -3295,10 +3295,10 @@ Respond in strict JSON format:
         const list = records.map((g) => `- id: ${g.id} | ${g.name} | category: ${g.part} | color: ${g.color}${colorFamily(g.color) ? ` (${colorFamily(g.color)})` : ""}${g.secondaryColor ? ` + ${g.secondaryColor}` : ""} | tags: ${(g.tags || []).join(", ") || "none"}${g.fit?.length ? ` | length: ${g.fit.length}` : ""}${g.fit?.oversize ? " | oversize" : ""}`).join("\n");
         const prompt = `You are a personal stylist. The photo is an outfit the user wants to recreate from her own wardrobe.
 1. List every visible garment, shoe and accessory in the photo (at most 8), from top to bottom. For each, write a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "ג'ינס רחב בהיר"), a category id (upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats, sunglasses), its kind in one English word (e.g. shirt, tshirt, sweater, blazer, coat, jeans, trousers, skirt, shorts, dress, sneakers, boots, heels, sandals, bag, belt, sunglasses, hat, necklace, earrings, watch, scarf), and its main hex color.
-2. For each piece, choose up to 3 items from the wardrobe below that could take its place, best first. A match MUST be the same kind of item: sunglasses only match sunglasses, a bag only a bag, trousers only trousers or jeans, a top only a top. Never offer an item of a different kind just because the color is similar. Among items of the same kind, prefer the closest color, then the closest style (cut, length, fit, material, pattern). If the wardrobe has nothing of the same kind, return an empty list. Use only ids from the list, exactly as written.
-2b. Only when "matches" is empty: in "alternatives", ALWAYS choose up to 4 other items from the same category id that could be worn instead in this look, even if their color or style is different, best first (closest color and style to the look first), each with a short Hebrew reason. Return an empty "alternatives" list only if the wardrobe has no item at all in that category.
-2c. For every piece write "search": a short Hebrew shopping search phrase to buy it in a store (e.g. "מכנסי פשתן בז' רחבים לנשים"), and "box": the piece's position in the photo as integers on a 1000 by 1000 grid (x, y of the top-left corner, width, height).
-3. For each chosen item, give a very short Hebrew reason (up to 8 words), e.g. "אותו צבע, גזרה קצת שונה".
+2. For each piece, write "kindName": the kind of item in Hebrew plural, without color (e.g. "משקפי שמש", "סוודרים", "ג'ינסים", "תיקים", "מגפיים").
+3. In "sameKind", list EVERY item from the wardrobe below that is the same kind of item as the piece, in any color (all the sunglasses for sunglasses, all the bags for a bag, all trousers and jeans for trousers, all tops for a top of that kind). Never list an item of a different kind. For each, set "similar" to true only if it is close to the piece in BOTH color and style (it could really replace it), otherwise false, and give a very short Hebrew reason (up to 8 words), e.g. "אותו צבע, גזרה קצת שונה" or "אותו סוג, צבע שחור במקום חום". Best first. Use only ids from the list, exactly as written. Return an empty list if the wardrobe has nothing of that kind.
+3b. Only when "sameKind" is empty: in "alternatives", list the items from the same category id that would suit this look best, best first, each with a short Hebrew reason. Otherwise return an empty list.
+3c. For every piece write "search": a short Hebrew shopping search phrase to buy it in a store (e.g. "מכנסי פשתן בז' רחבים לנשים"), and "box": the piece's position in the photo as integers on a 1000 by 1000 grid (x, y of the top-left corner, width, height).
 4. Write "summary": one Hebrew sentence describing the look's style. Write "tip" as an empty string.
 
 Wardrobe:
@@ -3318,15 +3318,16 @@ ${list}`;
               properties: {
                 summary: { type: "string" },
                 tip: { type: "string" },
-                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "kind", "color", "search", "box", "matches", "alternatives"], properties: {
+                pieces: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "part", "kind", "kindName", "color", "search", "box", "sameKind", "alternatives"], properties: {
                   name: { type: "string" },
                   kind: { type: "string" },
+                  kindName: { type: "string" },
+                  sameKind: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "similar", "reason"], properties: { id: { type: "string" }, similar: { type: "boolean" }, reason: { type: "string" } } } },
                   search: { type: "string" },
                   box: { type: "object", additionalProperties: false, required: ["x", "y", "width", "height"], properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } } },
                   alternatives: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "reason"], properties: { id: { type: "string" }, reason: { type: "string" } } } },
                   part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "dress", "shoes", "accessories_up"] },
                   color: { type: "string" },
-                  matches: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "reason"], properties: { id: { type: "string" }, reason: { type: "string" } } } },
                 } } },
               },
             } } },
@@ -3365,43 +3366,69 @@ ${list}`;
           const have = accessoryKind(`${item.name} ${(item.tags || []).join(" ")}`);
           return Boolean(wanted && have && wanted === have);
         };
+        const CATEGORY_LABELS = { top: "החולצות", jacket: "העליוניות", bottom: "המכנסיים והחצאיות", dress: "השמלות", shoes: "הנעליים", accessory: "האקססוריז" };
+        const rgb = (hex) => (/^#[0-9a-f]{6}$/i.test(hex || "") ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) : null);
+        // Three levels for every piece of the photo:
+        //   match    - pieces like it (same kind, close color and style): only those
+        //   kind     - the same kind in other colors: only those, saying the exact one is missing
+        //   category - nothing of that kind: everything in the category (accessories for sunglasses)
         const pieces = (Array.isArray(parsed.pieces) ? parsed.pieces : []).slice(0, 8).map((piece) => {
+          const name = String(piece.name || "").slice(0, 60);
+          const kindName = String(piece.kindName || "").slice(0, 30) || name;
+          const target = rgb(piece.color);
+          const distance = (item) => {
+            const own = rgb(item.color);
+            return target && own ? own.reduce((total, value, i) => total + (value - target[i]) ** 2, 0) : 1e9;
+          };
           const seen = new Set();
-          const matches = (Array.isArray(piece.matches) ? piece.matches : [])
-            .filter((match) => byId.has(match.id) && sameKind(piece, byId.get(match.id)) && !seen.has(match.id) && seen.add(match.id))
-            .slice(0, 3)
-            .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
-          // Nothing of the same kind: other pieces of the same category that suit the look
-          const alternatives = matches.length ? [] : (Array.isArray(piece.alternatives) ? piece.alternatives : [])
-            .filter((match) => byId.has(match.id) && groupOf(byId.get(match.id).part) === groupOf(piece.part) && !seen.has(match.id) && seen.add(match.id))
-            .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
-          // Every other piece the wardrobe has in this category follows the AI's picks,
-          // closest color first
-          if (!matches.length) {
-            const rgb = (hex) => (/^#[0-9a-f]{6}$/i.test(hex || "") ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) : null);
-            const target = rgb(piece.color);
-            const distance = (item) => {
-              const own = rgb(item.color);
-              return target && own ? own.reduce((total, value, i) => total + (value - target[i]) ** 2, 0) : 1e9;
-            };
-            const extra = records
-              .filter((item) => groupOf(item.part) === groupOf(piece.part) && !seen.has(item.id))
-              .sort((a, b) => distance(a) - distance(b));
-            for (const item of extra) {
-              seen.add(item.id);
-              alternatives.push({ id: item.id, reason: distance(item) < 6000 ? "צבע קרוב" : "מאותה קטגוריה" });
+          const sameKindList = (Array.isArray(piece.sameKind) ? piece.sameKind : [])
+            .filter((entry) => byId.has(entry.id) && sameKind(piece, byId.get(entry.id)) && !seen.has(entry.id) && seen.add(entry.id))
+            .map((entry) => ({ id: entry.id, similar: entry.similar === true, reason: String(entry.reason || "").slice(0, 80) }));
+          // Accessories are also checked by name, so a pair of sunglasses the AI skipped still counts
+          if (groupOf(piece.part) === "accessory" && accessoryKind(`${piece.kind} ${piece.name}`)) {
+            for (const item of records) {
+              if (!seen.has(item.id) && sameKind(piece, item)) {
+                seen.add(item.id);
+                sameKindList.push({ id: item.id, similar: false, reason: "אותו סוג, צבע אחר" });
+              }
             }
+          }
+          const similar = sameKindList.filter((entry) => entry.similar);
+          let level;
+          let options;
+          let note = "";
+          if (similar.length) {
+            level = "match";
+            options = similar;
+          } else if (sameKindList.length) {
+            level = "kind";
+            options = sameKindList;
+            note = `אין בארון ${name} כמו בתמונה. מה שיש לך מאותו סוג:`;
+          } else {
+            const picks = (Array.isArray(piece.alternatives) ? piece.alternatives : [])
+              .filter((entry) => byId.has(entry.id) && groupOf(byId.get(entry.id).part) === groupOf(piece.part) && !seen.has(entry.id) && seen.add(entry.id))
+              .map((entry) => ({ id: entry.id, reason: String(entry.reason || "").slice(0, 80) }));
+            const rest = records
+              .filter((item) => groupOf(item.part) === groupOf(piece.part) && !seen.has(item.id))
+              .sort((a, b) => distance(a) - distance(b))
+              .map((item) => ({ id: item.id, reason: "" }));
+            options = [...picks, ...rest];
+            level = options.length ? "category" : "none";
+            note = options.length
+              ? `אין בארון ${kindName}. כל ${CATEGORY_LABELS[groupOf(piece.part)] || "הפריטים מאותה קטגוריה"} שלך:`
+              : `אין בארון ${kindName}.`;
           }
           const box = piece.box && [piece.box.x, piece.box.y, piece.box.width, piece.box.height].every(Number.isFinite) ? piece.box : null;
           return {
-            name: String(piece.name || "").slice(0, 60),
+            name,
             part: piece.part,
             kind: String(piece.kind || "").slice(0, 30),
             color: /^#[0-9a-f]{6}$/i.test(piece.color) ? piece.color : null,
             search: String(piece.search || piece.name || "").slice(0, 80),
             box,
-            matches,
-            alternatives,
+            level,
+            note,
+            options: options.map(({ id, reason }) => ({ id, reason })),
           };
         });
         return json(200, { summary: String(parsed.summary || ""), pieces });
