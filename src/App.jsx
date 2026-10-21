@@ -1642,15 +1642,19 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async ({ asNew = false } = {}) => {
     if (!selectedIds.length) {
       setBuilderError("אנא בחרו לפחות פריט אחד.");
       return;
     }
-    setSaving(true);
+    setSaving(editLook ? (asNew ? "new" : "update") : true);
     setBuilderError("");
     try {
-      const kept = editLook ? { id: editLook.id, createdAt: editLook.createdAt } : {};
+      // Updating keeps the look's id and date; a new look gets its own id (and its own copy of the photo)
+      const kept = editLook && !asNew ? { id: editLook.id, createdAt: editLook.createdAt } : {};
+      const fresh = editLook && asNew
+        ? { id: undefined, createdAt: undefined, copyImage: true, name: (lookName.trim() || editLook.name) === editLook.name ? `${editLook.name} 2` : lookName.trim() }
+        : {};
       const payload = generatedLook
         ? {
             ...generatedLook,
@@ -1664,6 +1668,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             mode: outfitMode,
             styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
+            ...fresh,
           }
         : {
             ...kept,
@@ -1674,6 +1679,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             setting: "a warm, natural daylight setting with minimalist architecture",
             image: selectedItems[0]?.thumbnail || selectedItems[0]?.image || "",
+            ...fresh,
           };
 
       const res = await fetch("/api/import/outfits/save", {
@@ -1986,8 +1992,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                 {!generating && <small>{price}</small>}
               </button>
             )}
-            {generatedLook ? (
-              <button className="lb-button is-primary" type="button" disabled={saving || generating} onClick={handleSave}>
+            {generatedLook && editLook ? null : generatedLook ? (
+              <button className="lb-button is-primary" type="button" disabled={saving || generating} onClick={() => handleSave()}>
                 <FloppyDisk size={15} />
                 <span>{saving ? "שומר..." : "שמירה"}</span>
               </button>
@@ -1999,6 +2005,18 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
               </button>
             )}
           </div>
+          {generatedLook && editLook && (
+            <div className="lb-footer__save">
+              <button className="lb-button" type="button" disabled={saving || generating} onClick={() => handleSave({ asNew: true })}>
+                <Copy size={15} />
+                <span>{saving === "new" ? "שומר..." : "שמירה כלוק חדש"}</span>
+              </button>
+              <button className="lb-button is-primary" type="button" disabled={saving || generating} onClick={() => handleSave()}>
+                <FloppyDisk size={15} />
+                <span>{saving === "update" ? "שומר..." : "עדכון הלוק"}</span>
+              </button>
+            </div>
+          )}
         </footer>
       </div>
     </div>

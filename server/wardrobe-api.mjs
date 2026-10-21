@@ -2391,6 +2391,16 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
 
     const outfitId = outfitData.id || `outfit-${randomUUID().slice(0, 8)}`;
     let outfitImage = outfitData.image;
+    // Saved as a new look from an edited one: it gets its own copy of the photo, so
+    // deleting one of the two never removes the other's picture
+    const sourceName = String(outfitImage || "").match(/\/api\/import\/outfits\/images\/([^?]+)/)?.[1];
+    if (outfitData.copyImage && sourceName && sourceName !== `${outfitId}.png`) {
+      const bytes = await store.getBytes(outfitImageKey(sourceName)).catch(() => null);
+      if (bytes) {
+        await store.setBytes(outfitImageKey(`${outfitId}.png`), bytes);
+        outfitImage = `/api/import/outfits/images/${outfitId}.png?t=${Date.now()}`;
+      }
+    }
     // A photo of the look made elsewhere (e.g. in ChatGPT)
     if (typeof outfitData.uploadedImage === "string" && outfitData.uploadedImage.startsWith("data:")) {
       const bytes = await normalizeUpload({ imageDataUrl: outfitData.uploadedImage });

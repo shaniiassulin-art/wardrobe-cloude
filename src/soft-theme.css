@@ -879,3 +879,6 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .wish-note textarea { resize: vertical; }
 .item-sheet__note-label { display: block; margin: 14px 0 8px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .item-sheet__note-label small { font-weight: 400; font-size: 11.5px; color: var(--muted); }
+/* Editing a look: update it, or keep it and save the changes as a new look */
+.lb-footer__save { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.lb-footer__save .lb-button { width: 100%; justify-content: center; white-space: nowrap; }
