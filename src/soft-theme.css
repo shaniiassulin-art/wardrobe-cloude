@@ -477,9 +477,11 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 /* Full-screen image: tap to zoom, previous/next for a set of images */
 .lightbox { padding: 0; display: block; }
 .lightbox__frame { position: absolute; inset: 0; display: flex; overflow: hidden; padding: calc(64px + env(safe-area-inset-top)) 16px calc(56px + env(safe-area-inset-bottom)); }
-.lightbox__frame .lightbox__image { margin: auto; max-width: min(100%, 1100px); max-height: 100%; cursor: zoom-in; transition: max-width 200ms ease; }
-.lightbox.is-zoomed .lightbox__frame { overflow: auto; padding: 0; -webkit-overflow-scrolling: touch; }
-.lightbox.is-zoomed .lightbox__image { max-width: none; max-height: none; width: max(200vw, 900px); height: auto; border-radius: 0; cursor: zoom-out; }
+.lightbox__frame { touch-action: none; }
+.lightbox__frame .lightbox__image { margin: auto; max-width: min(100%, 1100px); max-height: 100%; cursor: zoom-in; transform-origin: 0 0; transition: transform 220ms ease; will-change: transform; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.lightbox__frame .lightbox__image.is-moving { transition: none; }
+.lightbox.is-zoomed .lightbox__image { cursor: grab; }
+.lightbox.is-zoomed .lightbox__image.is-moving { cursor: grabbing; }
 .lightbox__bar { position: absolute; top: max(12px, env(safe-area-inset-top)); inset-inline-end: 12px; display: flex; gap: 8px; z-index: 2; }
 .lightbox__button,
 .lightbox__nav { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .92); color: var(--ink); cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .15); }
