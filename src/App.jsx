@@ -2279,14 +2279,17 @@ export function App() {
     flatlayRefresh.current = true;
     (async () => {
       let changed = false;
-      for (let round = 0; round < 40; round++) {
+      let failures = 0;
+      for (let round = 0; round < 120; round++) {
         try {
           const res = await fetch(`/api/import/outfits/refresh-flatlays?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, { method: "POST", headers: { "x-wardrobe-id": activeWardrobeId } });
-          if (!res.ok) break;
+          if (!res.ok) { if (++failures > 3) break; continue; }
           const data = await res.json();
           if (data.refreshed) changed = true;
-          if (!data.remaining || !data.refreshed) break;
-        } catch { break; }
+          // Show the looks done so far every few rounds
+          if (changed && round % 4 === 3) fetchOutfits();
+          if (!data.remaining) break;
+        } catch { if (++failures > 3) break; }
       }
       if (changed) fetchOutfits();
     })();

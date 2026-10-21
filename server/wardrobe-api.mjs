@@ -3591,30 +3591,40 @@ ${list}`;
         let changed = false;
         const started = Date.now();
         for (const outfit of outfits) {
-          if (done >= 4 || Date.now() - started > 6000) break;
-          const name = await isOldFlatlay(outfit);
+          // One or two per request, so a request never runs into the host's time limit
+          if (done >= 2 || Date.now() - started > 4000) break;
+          let name = false;
+          try { name = await isOldFlatlay(outfit); } catch {}
           if (!name) {
             if (!outfit.flatlayVersion && outfit.mode !== "modeled" && !outfit.flatlayChecked) { outfit.flatlayChecked = true; changed = true; }
             continue;
           }
-          const garmentEntries = [];
-          for (const id of outfit.garmentIds || []) {
-            const item = records.find((record) => record.id === id);
-            const buffer = item ? await store.getBytes(libraryKey(`${id}-garment.png`)) : null;
-            if (buffer) garmentEntries.push({ buffer, item });
+          try {
+            const garmentEntries = [];
+            for (const id of outfit.garmentIds || []) {
+              const item = records.find((record) => record.id === id);
+              const buffer = item ? await store.getBytes(libraryKey(`${id}-garment.png`)) : null;
+              if (buffer) garmentEntries.push({ buffer, item });
+            }
+            if (garmentEntries.length) {
+              const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), normalizeFlatlayStyling(outfit.styling || {}), await bodyOf(wId));
+              await store.setBytes(outfitImageKey(name), bytes);
+              outfit.image = `/api/import/outfits/images/${name}?t=${Date.now()}`;
+            }
+            outfit.mode = "flatlay";
+            outfit.flatlayVersion = FLATLAY_VERSION;
+          } catch (error) {
+            // A look that cannot be laid out again is left as it is, and not tried again
+            console.warn("Could not refresh flat lay", outfit.id, error.message);
+            outfit.flatlayChecked = true;
           }
-          if (garmentEntries.length) {
-            const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), normalizeFlatlayStyling(outfit.styling || {}), await bodyOf(wId));
-            await store.setBytes(outfitImageKey(name), bytes);
-            outfit.image = `/api/import/outfits/images/${name}?t=${Date.now()}`;
-          }
-          outfit.mode = "flatlay";
-          outfit.flatlayVersion = FLATLAY_VERSION;
           changed = true;
           done += 1;
         }
         if (changed) await saveOutfits(wId, outfits);
-        const remaining = (await Promise.all(outfits.map(async (outfit) => Boolean(await isOldFlatlay(outfit))))).filter(Boolean).length;
+        // Counted without opening any picture: what is still to look at
+        const remaining = outfits.filter((outfit) => (outfit.flatlayVersion || 0) < FLATLAY_VERSION && outfit.mode !== "modeled" && !outfit.flatlayChecked
+          && /\/api\/import\/outfits\/images\//.test(String(outfit.image || ""))).length;
         return json(200, { refreshed: done, remaining });
       }
       if (url.pathname === "/api/import/outfits/prompt" && request.method === "POST") {

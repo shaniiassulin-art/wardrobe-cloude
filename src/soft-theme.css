@@ -762,7 +762,17 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 
 /* Every look on the same background: a flat lay is drawn on the wardrobe card
    colour, so its picture fills the card with no frame or outline around it */
-.look-tile:not(.is-photo) .gallery-item__main { padding: 0; }
+.look-tile:not(.is-photo) .gallery-item__main { padding: 8%; }
+.look-tile:not(.is-photo) .gallery-item__main picture { display: block; width: 100%; height: 100%; }
 .look-tile:not(.is-photo) .gallery-item__main > img:first-child,
-.look-tile:not(.is-photo) .gallery-item__main picture img { width: 100%; height: 100%; object-fit: contain; transform: none; filter: none; border-radius: inherit; }
+.look-tile:not(.is-photo) .gallery-item__main picture img { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center; transform: none; filter: none; border-radius: 0; }
 .look-viewer__photo img { display: block; width: 100%; height: auto; }
+/* The card keeps the flat lay's own colour on hover, so its edges never show */
+@media (hover: hover) and (pointer: fine) {
+  .look-tile:not(.is-photo) .gallery-item__main:hover { background: #ece5db; }
+}
+/* A look photographed on the user is shown whole too, on the card colour */
+.look-tile.is-photo .gallery-item__main { background: #ece5db; }
+.look-tile.is-photo .gallery-item__main picture { display: block; width: 100%; height: 100%; }
+.look-tile.is-photo .gallery-item__main > img:first-child,
+.look-tile.is-photo .gallery-item__main picture img { width: 100%; height: 100%; object-fit: contain; }
