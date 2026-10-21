@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, SlidersHorizontal } from "@phosphor-icons/react";
-import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, PencilSimple, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { fittedImage, imageFallback, thumbUrl, toBrowserImage } from "./image-files.js";
@@ -929,7 +929,7 @@ const lookImages = (look, items = []) => [
   ...(look.garments || []).map((garment) => ({ src: thumbUrl(lookPieceImage(garment, items), 1080), alt: garment.name })),
 ];
 
-function LookViewerModal({ look, isPhoto = false, items = [], onClose, onDelete, onPack, onCreateOnMe, suitcaseCount = 0 }) {
+function LookViewerModal({ look, isPhoto = false, items = [], onClose, onDelete, onPack, onCreateOnMe, onEdit, suitcaseCount = 0 }) {
   const [deleting, setDeleting] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(null);
 
@@ -1007,7 +1007,9 @@ function LookViewerModal({ look, isPhoto = false, items = [], onClose, onDelete,
               <Suitcase size={15} weight={suitcaseCount ? "fill" : "regular"} /> <span>{suitcaseCount ? `במזוודה ${suitcaseCount}` : "מזוודה"}</span>
             </button>
           )}
-          <button className="lv-btn is-primary" type="button" onClick={onClose}>סגירה</button>
+          {onEdit && !!look.garmentIds?.length
+            ? <button className="lv-btn is-primary" type="button" onClick={() => onEdit(look)}><PencilSimple size={15} /> <span>עריכה</span></button>
+            : <button className="lv-btn is-primary" type="button" onClick={onClose}>סגירה</button>}
         </div>
       </div>
       {zoomIndex !== null && <ImageLightbox images={lookImages(look, items)} startIndex={zoomIndex} onClose={() => setZoomIndex(null)} />}
@@ -1464,13 +1466,13 @@ function StylingChoice({ label, value, options, onChange, disabled }) {
   );
 }
 
-function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, onClose, onCreated }) {
+function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, editLook = null, onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
   // A look made before the choice existed was laid on the body
   const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling ? { layout: "body", ...initialStyling } : {}) }));
-  const [lookName, setLookName] = useState("");
+  const [lookName, setLookName] = useState(editLook?.name || "");
   // One category open at a time; all closed at first
   const [openCategory, setOpenCategory] = useState(null);
   // The picked piece whose length and fit are being edited here
@@ -1481,7 +1483,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const [completingAI, setCompletingAI] = useState(false);
   const [aiExplanation, setAiExplanation] = useState("");
   const [builderError, setBuilderError] = useState("");
-  const [generatedLook, setGeneratedLook] = useState(null);
+  // Editing a saved look starts from its picture, so it can be saved again right away
+  const [generatedLook, setGeneratedLook] = useState(() => (editLook ? { ...editLook, mode: editLook.mode || initialMode, usedStyling: editLook.styling || undefined, existing: true } : null));
   // Shows "the look is ready" over the preview for a moment after each creation
   const [justCreated, setJustCreated] = useState(0);
   const bodyRef = useRef(null);
@@ -1535,11 +1538,12 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   }, [styling, hasOuter, hasInnerTop, hasTop, hasBottom, hasButtoned, JSON.stringify(layersPayload)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A look made on the model has already been paid for, so losing it unsaved wastes money
-  const paidUnsaved = Boolean(generatedLook) && generatedLook.mode !== "flatlay" && !generatedLook.uploaded && !saving;
+  const paidUnsaved = Boolean(generatedLook) && !generatedLook.existing && generatedLook.mode !== "flatlay" && !generatedLook.uploaded && !saving;
   const confirmDiscardPaid = (action = "לסגור") => !paidUnsaved || window.confirm(`הלוק עלייך כבר נוצר והיצירה עלתה ${lookOnModelPrice(selectedIds.length)}. אם ${action} בלי לשמור, הלוק יאבד והכסף לא יחזור. להמשיך בלי לשמור?`);
   const requestClose = () => { if (confirmDiscardPaid("תסגרי")) onClose(); };
 
   const toggleItem = (id) => {
+    if (generatedLook) setPendingChanges(true);
     setSelectedIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((x) => x !== id);
@@ -1646,9 +1650,15 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     setSaving(true);
     setBuilderError("");
     try {
+      const kept = editLook ? { id: editLook.id, createdAt: editLook.createdAt } : {};
       const payload = generatedLook
         ? {
             ...generatedLook,
+            ...kept,
+            existing: undefined,
+            usedStyling: undefined,
+            // A flat lay is laid out again on saving, so it follows the pieces picked now
+            ...(outfitMode === "flatlay" ? { garmentIds: selectedIds } : {}),
             name: lookName.trim() || generatedLook.name,
             notes: outfitNotes.trim() || generatedLook.notes,
             mode: outfitMode,
@@ -1656,6 +1666,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
           }
         : {
+            ...kept,
             name: lookName.trim() || undefined,
             garmentIds: selectedIds,
             notes: outfitNotes.trim() || undefined,
@@ -1721,7 +1732,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     <div className="builder-modal-overlay look-builder-overlay" onMouseDown={(e) => e.target === e.currentTarget && requestClose()}>
       <div className="builder-modal look-builder" role="dialog" aria-modal="true" aria-labelledby="look-builder-title">
         <header className="lb-header">
-          <h2 id="look-builder-title">לוק חדש</h2>
+          <h2 id="look-builder-title">{editLook ? "עריכת לוק" : "לוק חדש"}</h2>
           <button className="lb-close" type="button" onClick={requestClose} aria-label="סגירה">
             <X size={18} />
           </button>
@@ -3143,6 +3154,7 @@ export function App() {
           initialMode={builderMode}
           initialNotes={builderInitialExtras.notes}
           initialStyling={builderInitialExtras.styling}
+          editLook={builderInitialExtras.editLook || null}
           onClose={() => {
             setBuilderOpen(false);
             setBuilderInitialItems([]);
@@ -3181,6 +3193,11 @@ export function App() {
             const ids = (look.garmentIds || []).filter((id) => items.some((item) => item.id === id));
             setSelectedLook(null);
             openLookBuilder(ids, "modeled", { notes: [look.notes, stylingSummary(look.styling)].filter(Boolean).join(". ") });
+          }}
+          onEdit={(look) => {
+            const ids = (look.garmentIds || []).filter((id) => items.some((item) => item.id === id));
+            setSelectedLook(null);
+            openLookBuilder(ids, look.mode === "modeled" || (look.mode !== "flatlay" && photoLooks[look.id]) ? "modeled" : "flatlay", { notes: look.notes || "", styling: look.styling || null, editLook: look });
           }}
         />
       )}
