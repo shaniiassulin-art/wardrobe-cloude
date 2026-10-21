@@ -151,7 +151,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
                       <p className="inspo-missing">אין בארון פריט דומה</p>
                       {piece.alternatives?.length > 0 && (
                         <>
-                          <p className="inspo-alt-title">במקום זה, מאותה קטגוריה ובסגנון של הלוק:</p>
+                          <p className="inspo-alt-title">אפשרויות מאותה קטגוריה בארון שלך:</p>
                           {tiles(piece, piece.alternatives)}
                         </>
                       )}
@@ -163,7 +163,6 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
                   )}
                 </div>
               ))}
-              {result.tip && <p className="lb-hint">💡 {result.tip}</p>}
             </section>
           )}
         </div>

@@ -3296,10 +3296,10 @@ Respond in strict JSON format:
         const prompt = `You are a personal stylist. The photo is an outfit the user wants to recreate from her own wardrobe.
 1. List every visible garment, shoe and accessory in the photo (at most 8), from top to bottom. For each, write a short Hebrew name (e.g. "חולצה לבנה מכופתרת", "ג'ינס רחב בהיר"), a category id (upperbody = tops and shirts, wholebody_up = jackets and coats, lowerbody = trousers, skirts and shorts, dress, shoes, accessories_up = bags, belts, jewellery, hats, sunglasses), its kind in one English word (e.g. shirt, tshirt, sweater, blazer, coat, jeans, trousers, skirt, shorts, dress, sneakers, boots, heels, sandals, bag, belt, sunglasses, hat, necklace, earrings, watch, scarf), and its main hex color.
 2. For each piece, choose up to 3 items from the wardrobe below that could take its place, best first. A match MUST be the same kind of item: sunglasses only match sunglasses, a bag only a bag, trousers only trousers or jeans, a top only a top. Never offer an item of a different kind just because the color is similar. Among items of the same kind, prefer the closest color, then the closest style (cut, length, fit, material, pattern). If the wardrobe has nothing of the same kind, return an empty list. Use only ids from the list, exactly as written.
-2b. Only when "matches" is empty: in "alternatives", choose up to 3 OTHER items from the same category (same category id) that would suit the style and colors of this look instead, best first, each with a short Hebrew reason. Otherwise return an empty "alternatives" list.
+2b. Only when "matches" is empty: in "alternatives", ALWAYS choose up to 3 other items from the same category id that could be worn instead in this look, even if their color or style is different, best first (closest color and style to the look first), each with a short Hebrew reason. Return an empty "alternatives" list only if the wardrobe has no item at all in that category.
 2c. For every piece write "search": a short Hebrew shopping search phrase to buy it in a store (e.g. "מכנסי פשתן בז' רחבים לנשים"), and "box": the piece's position in the photo as integers on a 1000 by 1000 grid (x, y of the top-left corner, width, height).
 3. For each chosen item, give a very short Hebrew reason (up to 8 words), e.g. "אותו צבע, גזרה קצת שונה".
-4. Write "summary": one Hebrew sentence describing the look's style. Write "tip": one short Hebrew sentence on what is missing from the wardrobe to get closer to the look, or an empty string if nothing is missing.
+4. Write "summary": one Hebrew sentence describing the look's style. Write "tip" as an empty string.
 
 Wardrobe:
 ${list}`;
@@ -3376,6 +3376,24 @@ ${list}`;
             .filter((match) => byId.has(match.id) && groupOf(byId.get(match.id).part) === groupOf(piece.part) && !seen.has(match.id) && seen.add(match.id))
             .slice(0, 3)
             .map((match) => ({ id: match.id, reason: String(match.reason || "").slice(0, 80) }));
+          // The AI gave none: still show what the wardrobe has in this category,
+          // closest color first
+          if (!matches.length && alternatives.length < 3) {
+            const rgb = (hex) => (/^#[0-9a-f]{6}$/i.test(hex || "") ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) : null);
+            const target = rgb(piece.color);
+            const distance = (item) => {
+              const own = rgb(item.color);
+              return target && own ? own.reduce((total, value, i) => total + (value - target[i]) ** 2, 0) : 1e9;
+            };
+            const extra = records
+              .filter((item) => groupOf(item.part) === groupOf(piece.part) && !seen.has(item.id))
+              .sort((a, b) => distance(a) - distance(b))
+              .slice(0, 3 - alternatives.length);
+            for (const item of extra) {
+              seen.add(item.id);
+              alternatives.push({ id: item.id, reason: distance(item) < 6000 ? "צבע קרוב" : "מאותה קטגוריה" });
+            }
+          }
           const box = piece.box && [piece.box.x, piece.box.y, piece.box.width, piece.box.height].every(Number.isFinite) ? piece.box : null;
           return {
             name: String(piece.name || "").slice(0, 60),
@@ -3388,7 +3406,7 @@ ${list}`;
             alternatives,
           };
         });
-        return json(200, { summary: String(parsed.summary || ""), tip: String(parsed.tip || ""), pieces });
+        return json(200, { summary: String(parsed.summary || ""), pieces });
       }
       if (url.pathname === "/api/import/outfits/prompt" && request.method === "POST") {
         const input = await body(request);
