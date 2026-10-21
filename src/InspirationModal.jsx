@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, Check, Heart, ImageSquare, MagicWand, X } from "@phosphor-icons/react";
 import { fileToUploadDataUrl, fittedImage, imageFallback, thumbUrl } from "./image-files.js";
 import { PRICES } from "./prices.js";
+import { saveWishlistPiece } from "./wishlist-api.js";
 
 // Upload an inspiration photo (Pinterest, a screenshot...) and get the closest
 // pieces from the wardrobe for each piece in it, then build the look from them.
@@ -32,6 +33,7 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
     setSelected([]);
     setWished({});
     setOtherOpen({});
+    entryRef.current = null;
     try {
       // Kept sharp: a piece saved to the Wishlist is cut out of this photo
       setPhoto(await fileToUploadDataUrl(file, 2048, 0.93));
@@ -82,18 +84,14 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
     });
   };
 
-  // Saved only when she asks for it
+  // Saved only when she asks for it. The photo is saved once; more pieces of it join it.
+  const entryRef = useRef(null);
   const addToWishlist = async (piece, index) => {
     setWished((current) => ({ ...current, [index]: "saving" }));
     setError("");
     try {
-      const res = await fetch("/api/import/wishlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId },
-        body: JSON.stringify({ name: piece.name, part: piece.part, color: piece.color, colorName: piece.colorName, description: piece.description, box: piece.box, note: result?.summary || "", imageDataUrl: photo }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "לא ניתן להוסיף ל-Wishlist כרגע");
+      const data = await saveWishlistPiece({ wardrobeId, entryId: entryRef.current, imageDataUrl: photo, piece });
+      entryRef.current = data.id;
       setWished((current) => ({ ...current, [index]: "saved" }));
       onWishlistAdded?.(data);
     } catch (err) {

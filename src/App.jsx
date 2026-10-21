@@ -2270,13 +2270,6 @@ export function App() {
       }
     } catch {}
   }, [activeWardrobeId]);
-  const removeWishlistItem = async (id) => {
-    const res = await fetch(`/api/import/wishlist/${id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
-      method: "DELETE",
-      headers: { "x-wardrobe-id": activeWardrobeId },
-    });
-    if (res.ok) setWishlist((current) => current.filter((entry) => entry.id !== id));
-  };
 
   const fetchUserProfile = useCallback(async () => {
     try {
@@ -2961,7 +2954,7 @@ export function App() {
         )}
 
         {activeType === "wishlist" && (
-          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onRemove={removeWishlistItem} onUpdate={(entry) => setWishlist((current) => current.map((other) => other.id === entry.id ? entry : other))} onAdded={(entry) => setWishlist((current) => [entry, ...current.filter((other) => other.id !== entry.id)])} />
+          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onChange={(entry) => setWishlist((current) => current.some((other) => other.id === entry.id) ? current.map((other) => other.id === entry.id ? entry : other) : [entry, ...current])} onRemoved={(id) => setWishlist((current) => current.filter((other) => other.id !== id))} />
         )}
         {activeType === "archive" && (
           <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />
@@ -3099,7 +3092,7 @@ export function App() {
           wardrobeId={activeWardrobeId}
           onClose={() => setInspirationOpen(false)}
           onCreateLook={(ids) => { setInspirationOpen(false); openLookBuilder(ids, "flatlay"); }}
-          onWishlistAdded={(entry) => setWishlist((current) => [entry, ...current.filter((other) => other.id !== entry.id)])}
+          onWishlistAdded={(entry) => setWishlist((current) => current.some((other) => other.id === entry.id) ? current.map((other) => other.id === entry.id ? entry : other) : [entry, ...current])}
         />
       )}
       {builderOpen && (

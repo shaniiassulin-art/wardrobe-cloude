@@ -2,31 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowClockwise, Heart, ImageSquare, MagicWand, Plus, Trash, X } from "@phosphor-icons/react";
 import { fileToUploadDataUrl } from "./image-files.js";
 import { PRICES } from "./prices.js";
-
-// A small preview of one piece, cut out of the photo in the browser
-async function cropPreview(dataUrl, box, max = 320) {
-  const image = await new Promise((resolve, reject) => {
-    const element = new Image();
-    element.onload = () => resolve(element);
-    element.onerror = reject;
-    element.src = dataUrl;
-  });
-  const pad = 0.12;
-  const W = image.naturalWidth;
-  const H = image.naturalHeight;
-  const x0 = box ? Math.max(0, (box.x / 1000 - (box.width / 1000) * pad) * W) : 0;
-  const y0 = box ? Math.max(0, (box.y / 1000 - (box.height / 1000) * pad) * H) : 0;
-  const x1 = box ? Math.min(W, ((box.x + box.width) / 1000 + (box.width / 1000) * pad) * W) : W;
-  const y1 = box ? Math.min(H, ((box.y + box.height) / 1000 + (box.height / 1000) * pad) * H) : H;
-  const w = Math.max(1, x1 - x0);
-  const h = Math.max(1, y1 - y0);
-  const scale = Math.min(1, max / Math.max(w, h));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(w * scale);
-  canvas.height = Math.round(h * scale);
-  canvas.getContext("2d").drawImage(image, x0, y0, w, h, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.85);
-}
+import { saveWishlistPiece } from "./wishlist-api.js";
 
 let photoCounter = 0;
 
@@ -71,8 +47,7 @@ export function WishlistAddModal({ wardrobeId, onAdded, onClose }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "לא ניתן לזהות את הפריטים כרגע");
-      const pieces = await Promise.all(data.pieces.map(async (piece) => ({ ...piece, preview: await cropPreview(photo.dataUrl, piece.box).catch(() => photo.dataUrl) })));
-      update(photo.key, () => ({ status: "done", pieces }));
+      update(photo.key, () => ({ status: "done", pieces: data.pieces }));
     } catch (err) {
       update(photo.key, () => ({ status: "error", error: err.message }));
     }
@@ -82,16 +57,13 @@ export function WishlistAddModal({ wardrobeId, onAdded, onClose }) {
   const analyzing = photos.some((photo) => photo.status === "analyzing");
   const analyzeAll = () => pending.forEach((photo) => analyze(photo));
 
+  // The photo is saved once with its first piece; more pieces of it join the same entry
+  const entries = useRef({});
   const save = async (photo, piece, index) => {
     update(photo.key, (current) => ({ saved: { ...current.saved, [index]: "saving" } }));
     try {
-      const res = await fetch("/api/import/wishlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId },
-        body: JSON.stringify({ name: piece.name, part: piece.part, color: piece.color, colorName: piece.colorName, description: piece.description, box: piece.box, imageDataUrl: photo.dataUrl }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "לא ניתן להוסיף ל-Wishlist כרגע");
+      const data = await saveWishlistPiece({ wardrobeId, entryId: entries.current[photo.key], imageDataUrl: photo.dataUrl, piece });
+      entries.current[photo.key] = data.id;
       update(photo.key, (current) => ({ saved: { ...current.saved, [index]: "saved" } }));
       onAdded?.(data);
     } catch (err) {
@@ -136,7 +108,6 @@ export function WishlistAddModal({ wardrobeId, onAdded, onClose }) {
                 </div>
                 {photo.pieces.map((piece, index) => (
                   <div key={index} className="wish-add__piece">
-                    <img src={piece.preview} alt="" />
                     <div className="wish-add__text">
                       <strong>
                         {piece.color && <span className="inspo-dot" style={{ background: piece.color }} aria-hidden="true" />}
