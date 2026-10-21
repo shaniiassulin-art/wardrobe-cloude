@@ -1221,39 +1221,93 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       innerBox ? innerBox.top + innerBox.h : 0,
       jacketHemY || 0,
     );
-    const sockBoxes = [];
-    if (socks.length) {
-      const w = socks.length > 1 ? 150 : 210;
-      const totalW = socks.length * w + (socks.length - 1) * 20;
-      socks.slice(0, 2).forEach((sock, i) => {
-        const h = Math.min(240, Math.round(w * sock.ratio));
-        sockBoxes.push({ piece: sock, left: bodyX - totalW / 2 + i * (w + 20), top: lowestAbove - Math.round(h * 0.12), w, h });
+    // Socks and shoes go right under the ends of the trouser legs: each one under a
+    // leg, found from where the legs end in the trousers' photo
+    const legs = await (async () => {
+      if (!bottomBox || isSkirt) return null;
+      try {
+        const { data, info } = await sharp(bottomPiece.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const y = Math.round(info.height * 0.97);
+        const runs = [];
+        let start = -1;
+        for (let x = 0; x <= info.width; x++) {
+          const solid = x < info.width && data[(y * info.width + x) * info.channels + info.channels - 1] > 40;
+          if (solid && start < 0) start = x;
+          if (!solid && start >= 0) { if (x - start > info.width * 0.04) runs.push([start, x]); start = -1; }
+        }
+        const toX = (fraction) => bottomBox.left + fraction * bottomBox.w;
+        if (runs.length >= 2) {
+          const [a, b] = [runs[0], runs[runs.length - 1]];
+          return { left: toX((a[0] + a[1]) / 2 / info.width), right: toX((b[0] + b[1]) / 2 / info.width), width: ((a[1] - a[0] + b[1] - b[0]) / 2 / info.width) * bottomBox.w };
+        }
+        // One solid hem (wide trousers photographed together): a quarter in from each side
+        const [a0, a1] = runs[0] || [0, info.width];
+        const span = a1 - a0;
+        return { left: toX((a0 + span * 0.25) / info.width), right: toX((a0 + span * 0.75) / info.width), width: (span / 2 / info.width) * bottomBox.w };
+      } catch {
+        return null;
+      }
+    })();
+    const hemY = bottomBox ? bottomBox.top + bottomBox.h : lowestAbove;
+    const legGap = legs ? legs.right - legs.left : 0;
+    // Places a pair (one photo) centred under both legs, or one piece per leg
+    const underLegs = (pieces, { pairW, eachW, maxH, top }) => {
+      if (!legs) return null;
+      if (pieces.length === 1) {
+        const piece = pieces[0];
+        const w = Math.round(Math.max(200, Math.min(460, pairW)));
+        const h = Math.min(maxH, Math.round(w * piece.ratio));
+        return [{ piece, left: (legs.left + legs.right) / 2 - w / 2, top: top(h), w, h }];
+      }
+      return pieces.slice(0, 2).map((piece, i) => {
+        const w = Math.round(Math.max(110, Math.min(280, eachW)));
+        const h = Math.min(maxH, Math.round(w * piece.ratio));
+        return { piece, left: (i === 0 ? legs.left : legs.right) - w / 2, top: top(h), w, h };
       });
+    };
+
+    let sockBoxes = [];
+    if (socks.length) {
+      sockBoxes = underLegs(socks, { pairW: legGap * 2.05, eachW: Math.max(legs?.width || 0, legGap * 0.85), maxH: 240, top: (h) => hemY - Math.round(h * 0.12) }) || [];
+      if (!sockBoxes.length) {
+        const w = socks.length > 1 ? 150 : 210;
+        const totalW = socks.length * w + (socks.length - 1) * 20;
+        socks.slice(0, 2).forEach((sock, i) => {
+          const h = Math.min(240, Math.round(w * sock.ratio));
+          sockBoxes.push({ piece: sock, left: bodyX - totalW / 2 + i * (w + 20), top: lowestAbove - Math.round(h * 0.12), w, h });
+        });
+      }
     }
 
     // Shoes sit at the ankle under long trousers or a long dress; otherwise a little below the hem
     const shoeBoxes = [];
     if (shoes.length) {
-      const lowest = sockBoxes.length ? Math.max(...sockBoxes.map((box) => box.top + box.h)) : lowestAbove;
+      const lowest = sockBoxes.length ? Math.max(...sockBoxes.map((box) => box.top + box.h)) : (bottomBox ? hemY : lowestAbove);
       const pair = shoes.slice(0, 2);
-      const w = pair.length === 2 ? 270 : 320;
-      const shoeH = Math.min(220, Math.round(w * pair[0].ratio));
       // Over the shoe: the hem covers the top third of the shoe. To the ankle: they
       // just meet. Shorter: a small gap.
       const end = bottomBox ? bottomBox.end : innerBox && isDressInner ? lengthOf(innerPiece, "dress", 2.3) : 0;
-      const shoeTop = sockBoxes.length ? lowest - Math.round(shoeH * 0.3)
+      const topFor = (shoeH) => (sockBoxes.length ? lowest - Math.round(shoeH * 0.3)
         : end >= 3.1 ? lowest - Math.round(shoeH * 0.35)
         : end >= 2.9 ? lowest - 6
-        : lowest + 26;
-      const gapX = 24;
-      const totalW = pair.length * w + (pair.length - 1) * gapX;
-      pair.forEach((shoe, i) => {
-        const h = Math.min(220, Math.round(w * shoe.ratio));
-        shoeBoxes.push({ piece: shoe, left: bodyX - totalW / 2 + i * (w + gapX), top: shoeTop, w, h });
-      });
+        : lowest + 26);
+      const placed = underLegs(pair, { pairW: legGap * 2.1, eachW: Math.max(legGap * 0.95, 200), maxH: 220, top: topFor });
+      if (placed) {
+        shoeBoxes.push(...placed);
+      } else {
+        const w = pair.length === 2 ? 270 : 320;
+        const shoeTop = topFor(Math.min(220, Math.round(w * pair[0].ratio)));
+        const gapX = 24;
+        const totalW = pair.length * w + (pair.length - 1) * gapX;
+        pair.forEach((shoe, i) => {
+          const h = Math.min(220, Math.round(w * shoe.ratio));
+          shoeBoxes.push({ piece: shoe, left: bodyX - totalW / 2 + i * (w + gapX), top: shoeTop, w, h });
+        });
+      }
+      const extraTop = Math.max(...shoeBoxes.map((box) => box.top + box.h)) + 24;
       shoes.slice(2).forEach((shoe, i) => {
         const h = Math.min(200, Math.round(260 * shoe.ratio));
-        shoeBoxes.push({ piece: shoe, left: bodyX - 130, top: shoeTop + 230 + i * 220, w: 260, h });
+        shoeBoxes.push({ piece: shoe, left: bodyX - 130, top: extraTop + i * 220, w: 260, h });
       });
     }
 
