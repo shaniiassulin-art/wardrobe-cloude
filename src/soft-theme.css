@@ -781,3 +781,15 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .look-tile.is-photo .gallery-item__main > img:first-child,
 .look-tile.is-photo .gallery-item__main picture img { display: block; position: static; width: 100%; height: auto; max-height: none; object-fit: contain; border-radius: 20px; }
 .look-viewer__photo.is-photo { background: transparent; }
+
+/* Photos (looks on the user, Wishlist photos): all the same size, the photo
+   alone with rounded corners and no background behind it */
+.look-tile.is-photo .gallery-item__main { aspect-ratio: 2 / 3; height: auto; }
+.look-tile.is-photo .gallery-item__main picture { height: 100%; }
+.look-tile.is-photo .gallery-item__main > img:first-child,
+.look-tile.is-photo .gallery-item__main picture img { height: 100%; object-fit: cover; object-position: center top; }
+.wishlist-item__img { aspect-ratio: 2 / 3; border-radius: 20px; background: transparent; box-shadow: none; }
+.wishlist-item__img img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 20px; }
+.wishlist-item__img.is-ai img { object-fit: cover; padding: 0; }
+.wish-view { background: transparent; }
+.wish-view img { border-radius: 22px; }
