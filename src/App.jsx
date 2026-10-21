@@ -1436,8 +1436,11 @@ function SuitcaseFlatlayModal({ data, onClose, onSaveAsOutfit }) {
 const OUTER_PARTS = ["wholebody_up", "outerwear", "jacket"];
 const TOP_PARTS = ["upperbody", "top"];
 const BOTTOM_PARTS = ["lowerbody", "bottom"];
-const DEFAULT_FLATLAY_STYLING = { jacket: "open", top: "out", shirt: "closed" };
+// "spread": every piece in its own place, none on another (the default).
+// "body": laid like a body, with layers, in/out and open/closed choices.
+const DEFAULT_FLATLAY_STYLING = { layout: "spread", jacket: "open", top: "out", shirt: "closed" };
 const STYLING_LABELS = {
+  layout: { spread: "כל פריט במקומו", body: "על הגוף" },
   jacket: { open: "ז'קט פתוח", front: "ז'קט שלם מלפנים", behind: "ז'קט שלם מאחור", closed: "ז'קט שלם מלפנים" },
   top: { out: "חולצה בחוץ", tucked: "חולצה בתוך המכנסיים" },
   shirt: { open: "מכופתרת פתוחה", closed: "מכופתרת סגורה" },
@@ -1464,7 +1467,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
-  const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling || {}) }));
+  // A look made before the choice existed was laid on the body
+  const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling ? { layout: "body", ...initialStyling } : {}) }));
   const [lookName, setLookName] = useState("");
   // One category open at a time; all closed at first
   const [openCategory, setOpenCategory] = useState(null);
@@ -1520,7 +1524,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   const [pendingChanges, setPendingChanges] = useState(false);
   // Only the choices that apply to the pieces picked right now are sent
   const activeStyling = useMemo(() => {
-    const next = {};
+    if (styling.layout !== "body") return { layout: "spread" };
+    const next = { layout: "body" };
     if (hasOuter && hasInnerTop) next.jacket = styling.jacket;
     if ((hasTop || hasOuter) && hasBottom) next.top = styling.top;
     if (hasButtoned) next.shirt = styling.shirt;
@@ -1683,7 +1688,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
     { id: "shoes", label: "נעליים" },
     { id: "accessories_up", label: "אקססוריז" },
   ];
-  const showStyling = outfitMode === "flatlay" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned || upperItems.length >= 2);
+  const bodyChoices = styling.layout === "body" && ((hasOuter && hasInnerTop) || ((hasTop || hasOuter) && hasBottom) || hasButtoned || upperItems.length >= 2);
+  const showStyling = outfitMode === "flatlay" && selectedItems.length > 0;
   const manyLayers = upperItems.length >= 2;
   // Arrangement changes are only shown when "שוב" is pressed
   const relayer = (order, styles) => {
@@ -1845,7 +1851,15 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                 <h3>סידור</h3>
                 <span className="lb-tag">חינם, בלי AI</span>
               </div>
-              {manyLayers && (
+              <StylingChoice
+                label="פריסה"
+                value={styling.layout === "body" ? "body" : "spread"}
+                disabled={generating}
+                options={[{ id: "spread", label: "כל פריט במקומו" }, { id: "body", label: "על הגוף" }]}
+                onChange={(value) => restyle("layout", value)}
+              />
+              {styling.layout !== "body" && <p className="lb-layers__hint">כל פריט שלם ובמקום משלו, ברווח מהשאר, לפי האורך והגזרה שהוגדרו לו</p>}
+              {bodyChoices && manyLayers && (
                 <div className="lb-layers">
                   <p className="lb-layers__hint">סדר השכבות על הגוף, מהקרובה לגוף ועד החיצונית, ואיך כל שכבה מונחת</p>
                   {upperItems.map((item, index) => {
@@ -1878,7 +1892,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   })}
                 </div>
               )}
-              {!manyLayers && hasOuter && hasInnerTop && (
+              {bodyChoices && !manyLayers && hasOuter && hasInnerTop && (
                 <StylingChoice
                   label="ז'קט"
                   value={styling.jacket}
@@ -1887,7 +1901,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   onChange={(value) => restyle("jacket", value)}
                 />
               )}
-              {hasButtoned && !manyLayers && (
+              {bodyChoices && hasButtoned && !manyLayers && (
                 <StylingChoice
                   label="חולצה מכופתרת"
                   value={styling.shirt}
@@ -1896,7 +1910,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
                   onChange={(value) => restyle("shirt", value)}
                 />
               )}
-              {(hasTop || hasOuter) && hasBottom && (
+              {bodyChoices && (hasTop || hasOuter) && hasBottom && (
                 <StylingChoice
                   label={upperItems && upperItems.length > 1 ? "שכבה ראשונה" : "חולצה"}
                   value={styling.top}

@@ -172,7 +172,7 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   const isShoes = category === "shoes" || /shoe|sneaker|boot|sandal|heel|loafer|נעל|סניקרס|מגף|מגפ|סנדל|כפכף/i.test(name);
   // Shoes are always shown the same way: the pair side by side, toes towards the viewer
   const shoeLayout = isShoes
-    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from a high diagonal angle: the camera is above and in front of the shoes, looking down at about 50-60 degrees (not straight down, and not a low front view). Both shoes rest on their soles, parallel, with the heels and the ankle opening toward the TOP of the image and the toes pointing DOWN toward the bottom of the image and the camera. From this angle the opening, laces or straps, vamp and toe box are all visible from above, and a thin strip of the sole's edge shows along the sides and at the toes. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this view.`
+    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from a high diagonal three-quarter angle: the camera is above the shoes, looking down at about 50-60 degrees (not straight down, and not a low eye-level view), and placed off to one front corner, about 35-45 degrees to the side, so the pair is seen at a diagonal: neither straight from the front nor from the side. Both shoes rest on their soles, parallel and turned the same way, with the heels and the ankle opening toward the TOP of the image and the toes pointing DOWN and diagonally toward a bottom corner of the image. From this angle the opening, laces or straps, vamp and toe box are all visible from above, and a thin strip of the sole's edge shows along the sides and at the toes. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this view.`
     : "";
 
   return `Use case: background-extraction
@@ -581,6 +581,9 @@ export async function fitMultipleGarmentsOnModel(modelBuffer, garmentEntries = [
 //   top:    "out"    - the top lies over the waistband of the bottoms
 //           "tucked" - the bottoms lie over the hem of the top, like a tucked-in top
 export const FLATLAY_STYLING = {
+  // "spread": every piece in its own place, side by side, none on another.
+  // "body": laid like a body, layers over each other (also the default for older looks).
+  layout: ["spread", "body"],
   jacket: ["open", "front", "behind"],
   top: ["out", "tucked"],
   // A button-up shirt worn open (laid like an open jacket) or buttoned
@@ -942,7 +945,57 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
   };
   const simpleColumn = orderedUpper.length <= 5 && dresses.length <= 1 && bottoms.length <= 1
     && !(dresses.length && bottoms.length) && (orderedUpper.length + bottoms.length) > 0;
-  if (simpleColumn) {
+  const spread = styling.layout === "spread";
+  if (spread) {
+    // Every piece whole and in its own place, with space between them, at sizes
+    // true to each other: lengths come from each piece's settings (to the hips,
+    // ankle length...), widths from its fit (regular or oversize).
+    const T = 300;
+    const fitOf = (piece) => piece?.item?.fit || {};
+    const big = (piece) => fitOf(piece).oversize === true;
+    const lengthUnits = (piece, table, fallback) => GARMENT_FIT[table][fitOf(piece).length] ?? fallback;
+    const sized = (piece, heightPx, baseW) => {
+      const h = Math.max(60, heightPx);
+      let w = Math.max(baseW * 0.9, Math.min(baseW * 1.08, h / piece.ratio));
+      const stretch = h / (w * piece.ratio);
+      if (stretch > 1.35) w = h / (piece.ratio * 1.35);
+      if (stretch < 0.75) w = h / (piece.ratio * 0.75);
+      return { w: Math.round(w), h: Math.round(h), fit: "fill" };
+    };
+    const natural = (piece, w, maxH) => {
+      const h = Math.min(maxH, Math.round(w * piece.ratio));
+      return { w: Math.round(h < w * piece.ratio ? h / piece.ratio : w), h };
+    };
+    const waistW = 360;
+    const upperSizes = orderedUpper.map((piece) => {
+      if (dresses.includes(piece)) return [piece, sized(piece, lengthUnits(piece, "dress", 2.3) * T, big(piece) ? 500 : 420)];
+      if (outerwear.includes(piece)) return [piece, sized(piece, lengthUnits(piece, "jacket", GARMENT_FIT.jacket.bottom) * T, (big(piece) ? 1.3 : 1.12) * waistW * bustToHips)];
+      return [piece, sized(piece, lengthUnits(piece, "top", GARMENT_FIT.top.waist) * T, (big(piece) ? 1.3 : 1.0) * waistW * bustToHips)];
+    });
+    const rows = [
+      upperSizes,
+      belts.map((belt) => [belt, natural(belt, Math.round(waistW * waistToHips * 1.08), 110)]),
+      bottoms.map((piece) => {
+        const isSkirt = /skirt|חצאית/.test(piece.nameLower);
+        return [piece, sized(piece, (lengthUnits(piece, "bottom", isSkirt ? 2.25 : ANKLE) - 1) * T, big(piece) ? 440 : 360)];
+      }),
+      [...socks.map((sock) => [sock, natural(sock, 200, 240)]), ...shoes.map((shoe) => [shoe, natural(shoe, shoes.length > 1 ? 270 : 320, 230)])],
+      [...bags.map((bag) => [bag, natural(bag, 280, 340)]), ...otherAccessories.map((acc) => [acc, natural(acc, 190, 200)])],
+    ].filter((row) => row.length);
+    const gap = 48;
+    for (const row of rows) {
+      const total = row.reduce((sum, [, size]) => sum + size.w, 0) + gap * (row.length - 1);
+      const rowH = Math.max(...row.map(([, size]) => size.h));
+      let x = centerX - total / 2;
+      for (const [piece, size] of row) {
+        // Small pieces sit in the middle of their row, garments hang from its top
+        const top = size.h < rowH * 0.6 ? currentY + Math.round((rowH - size.h) / 2) : currentY;
+        await placeItem(piece, { targetW: size.w, targetH: size.h, left: Math.round(x), top, blur: 7, opacity: 0.24, fit: size.fit || "contain" });
+        x += size.w + gap;
+      }
+      currentY += rowH + gap;
+    }
+  } else if (simpleColumn) {
     const T = 300; // shoulder-to-waist, in pixels
     const shoulderY = currentY;
     const waistY = shoulderY + T;
@@ -1456,7 +1509,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
 
   // 6. Left side accessories (Bags, backpacks, luggage)
   let leftSideY = 140;
-  for (const bag of bags) {
+  for (const bag of spread ? [] : bags) {
     const targetW = 280;
     const targetH = Math.min(340, Math.round(targetW * bag.ratio));
     await placeItem(bag, { targetW, targetH, left: 80, top: leftSideY, blur: 7, opacity: 0.22 });
@@ -1465,7 +1518,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
 
   // 7. Right side accessories (Jewelry, watches, glasses, etc.)
   let rightSideY = 140;
-  for (const acc of otherAccessories) {
+  for (const acc of spread ? [] : otherAccessories) {
     const targetW = 190;
     const targetH = Math.min(200, Math.round(targetW * acc.ratio));
     await placeItem(acc, { targetW, targetH, left: 890, top: rightSideY, blur: 5, opacity: 0.2 });
