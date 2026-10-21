@@ -793,3 +793,66 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .wishlist-item__img.is-ai img { object-fit: cover; padding: 0; }
 .wish-view { background: transparent; }
 .wish-view img { border-radius: 22px; }
+
+/* ------------------------------------------------------------------
+   Design pass: one rhythm of spacing, one gutter, one button language
+   ------------------------------------------------------------------ */
+:root { --gutter: 16px; --gap-s: 8px; --gap-m: 14px; --gap-l: 24px; }
+
+/* Round icon buttons everywhere (some closes were plain browser buttons) */
+.import-icon-button { display: inline-grid; place-items: center; flex: none; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.import-icon-button:hover { background: rgba(46, 42, 38, .07); }
+.import-icon-button:active { transform: scale(.94); }
+.lb-close { width: 38px; height: 38px; box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Breathing room between a piece of text and what follows it */
+.gallery-item__name { margin-top: 10px; line-height: 1.35; }
+.look-tile__pieces { margin-top: 8px; }
+.lb-hint, .lb-layers__hint, .inspo-missing, .inspo-alt-title { line-height: 1.55; }
+.lb-section + .lb-section { margin-top: var(--gap-l); }
+.lb-section__head { margin-bottom: 12px; }
+.lb-label { display: inline-block; margin-bottom: 8px; }
+.lb-input + .lb-label { margin-top: 18px; }
+.lb-hint { margin: 0 0 12px; }
+* + .account-hint { margin-top: 10px; }
+.account-section { padding-block: 20px; }
+.account-section h3 { margin-bottom: 12px; }
+.body-fields { row-gap: 12px; }
+.body-fields + button, .body-fields + .secondary-button { margin-top: 4px; }
+.wish-desc, .wishlist-item__desc { line-height: 1.6; }
+.wishlist-item__pieces { margin-top: 10px; gap: 5px; }
+.wish-piece + .wish-piece { padding-top: var(--gap-l); border-top: 1px solid var(--line); }
+.wish-piece__head { margin-bottom: 6px; }
+.wish-make { margin-top: 14px; }
+.inspo-piece__head { margin-bottom: 12px; }
+.inspo-summary { margin-bottom: 18px; }
+.lb-footer { gap: 10px; }
+.lb-footer .lb-error, .lb-footer .lb-paid { margin: 0 0 4px; line-height: 1.5; }
+.item-sheet__section { margin-top: 20px; padding-top: 22px; }
+.item-sheet__section h3 { margin-bottom: 12px; }
+.empty-wardrobe-text { line-height: 1.6; }
+
+/* Looks page: the four actions sit in an even two-by-two grid on a phone,
+   so no label is squeezed against its button's edge */
+@media (max-width: 520px) {
+  .looks-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+  .looks-actions > button { width: 100%; height: 42px; padding: 0 12px; font-size: 13.5px; }
+  .looks-actions .label-long { display: none; }
+  .looks-actions .label-short { display: inline; }
+}
+
+/* One page gutter on a phone for the header, the bars and the grids */
+@media (max-width: 520px) {
+  .gallery-header { padding-inline: var(--gutter); }
+  .gallery-grid { padding-inline: var(--gutter); gap: 18px 12px; }
+  .luggage-view { padding-inline: var(--gutter); }
+  .wishlist-bar, .archive-bar { margin-inline: var(--gutter); }
+  .category-nav { margin-top: 20px; }
+}
+/* Look window: its buttons stay in view at the bottom while the window scrolls */
+.look-viewer .look-viewer__footer { position: sticky; bottom: -22px; z-index: 3; margin: 18px -22px -22px; padding: 14px 22px max(16px, env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--line); }
+@media (max-width: 520px) {
+  .look-viewer .look-viewer__footer { bottom: -18px; margin: 16px -16px -18px; padding-inline: 16px; }
+}
+/* An old Wishlist entry without a photo: a soft colour swatch, no outline */
+.wishlist-item__swatch { width: 40%; box-shadow: none; opacity: .7; }
