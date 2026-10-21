@@ -172,7 +172,7 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   const isShoes = category === "shoes" || /shoe|sneaker|boot|sandal|heel|loafer|נעל|סניקרס|מגף|מגפ|סנדל|כפכף/i.test(name);
   // Shoes are always shown the same way: the pair side by side, toes towards the viewer
   const shoeLayout = isShoes
-    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from a high diagonal three-quarter angle: the camera is above the shoes, looking down at about 50-60 degrees (not straight down, and not a low eye-level view), and placed off to one front corner, about 35-45 degrees to the side, so the pair is seen at a diagonal: neither straight from the front nor from the side. Both shoes rest on their soles, parallel and turned the same way, with the heels and the ankle opening toward the TOP of the image and the toes pointing DOWN and diagonally toward a bottom corner of the image. From this angle the opening, laces or straps, vamp and toe box are all visible from above, and a thin strip of the sole's edge shows along the sides and at the toes. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this view.`
+    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, standing upright on their soles side by side, parallel, with a small even gap between them, both facing the camera straight on (symmetrical, not turned to the side). The camera is in front of the shoes and raised above them, looking down at about 40-45 degrees: halfway between a front view and a top-down view. The toes point toward the camera at the bottom of the image and the ankle opening is at the top, so the toe cap, the vamp, the full lacing or straps, the tongue and the opening with the inside of the collar are all visible, and the front and sides of the sole show along the bottom. Both shoes are identical mirror images at the same size and height. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this front, raised view.`
     : "";
 
   return `Use case: background-extraction
@@ -192,7 +192,7 @@ Lighting: Neutral diffuse product lighting contained on the garment only.
 
 Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.${shoeLayout}
 
-Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side, seen from a high diagonal angle with the toes toward the bottom, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
+Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side, facing the camera from a raised front angle (about 45 degrees), with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
 }
 
 function cleanupTolerance(value) {
