@@ -52,7 +52,11 @@ export function WishlistView({ items, wardrobeId, onChange, onRemoved }) {
               {entry.pieces.map((piece) => (
                 <li key={piece.pid}>
                   {piece.color && <span className="inspo-dot" style={{ background: piece.color }} aria-hidden="true" />}
-                  <span>{piece.name}{piece.colorName && <small> · {piece.colorName}</small>}</span>
+                  <span>
+                    <strong className="wishlist-item__piece-name">{piece.name}</strong>
+                    {piece.colorName && <small>{piece.colorName}</small>}
+                    {piece.description && <em className="wishlist-item__piece-desc">{piece.description}</em>}
+                  </span>
                 </li>
               ))}
             </ul>

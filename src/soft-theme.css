@@ -856,3 +856,21 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 }
 /* An old Wishlist entry without a photo: a soft colour swatch, no outline */
 .wishlist-item__swatch { width: 40%; box-shadow: none; opacity: .7; }
+
+/* Wishlist card: each piece's description right under its name */
+.wishlist-item__pieces li { align-items: flex-start; }
+.wishlist-item__pieces li .inspo-dot { margin-top: 4px; }
+.wishlist-item__pieces li > span { display: grid; gap: 2px; min-width: 0; }
+.wishlist-item__piece-desc { font-style: normal; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.wishlist-item__pieces li + li { margin-top: 6px; }
+/* Wishlist window: room under the last buttons */
+.wish-modal .lb-body { padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 24px)); }
+
+/* Looks on the user: the same size as every other look card, the photo filling it from the top */
+.look-tile.is-photo .gallery-item__main { aspect-ratio: .8; }
+.look-tile.is-photo .gallery-item__main > img:first-child,
+.look-tile.is-photo .gallery-item__main picture img { object-fit: cover; object-position: center top; }
+@media (max-width: 520px) {
+  .look-tile.is-photo .gallery-item__main { aspect-ratio: .8; }
+}
+.wishlist-item__piece-name { font-weight: 500; }
