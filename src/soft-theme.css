@@ -497,7 +497,7 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 
 /* Look window */
 .look-viewer { max-width: 580px; padding: 22px; }
-.look-viewer__photo { display: block; width: 100%; padding: 8px; margin: 0 0 16px; border: 0; border-radius: 18px; background: #f8f6f2; box-shadow: inset 0 0 0 1px var(--line); cursor: zoom-in; }
+.look-viewer__photo { display: block; width: 100%; padding: 0; margin: 0 0 16px; border: 0; border-radius: 18px; overflow: hidden; background: #ece5db; box-shadow: none; cursor: zoom-in; }
 .look-viewer__photo img { display: block; width: 100%; max-height: 62dvh; object-fit: contain; border-radius: 10px; }
 .look-viewer__label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
 .look-viewer__pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; margin-bottom: 16px; }
@@ -759,3 +759,10 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .wish-piece__actions { display: flex; gap: 6px; }
 .wish-ai { display: grid; place-items: center; width: 120px; aspect-ratio: 1; margin-top: 10px; padding: 8px; border: 0; border-radius: 16px; background: #ece5db; cursor: zoom-in; }
 .wish-ai img { width: 100%; height: 100%; object-fit: contain; }
+
+/* Every look on the same background: a flat lay is drawn on the wardrobe card
+   colour, so its picture fills the card with no frame or outline around it */
+.look-tile:not(.is-photo) .gallery-item__main { padding: 0; }
+.look-tile:not(.is-photo) .gallery-item__main > img:first-child,
+.look-tile:not(.is-photo) .gallery-item__main picture img { width: 100%; height: 100%; object-fit: contain; transform: none; filter: none; border-radius: inherit; }
+.look-viewer__photo img { display: block; width: 100%; height: auto; }

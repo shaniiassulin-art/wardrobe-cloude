@@ -894,7 +894,8 @@ const lookPieceImage = (garment, items = []) => {
 // A look photographed on the user fills its card; a flat lay sits on the light card.
 // Older looks did not record which kind they are, so the photo's corner colour
 // (flat lays have a plain light background) decides.
-const FLATLAY_BG = [248, 246, 242];
+// Flat lay backgrounds: the wardrobe card colour, and the near-white one used before
+const FLATLAY_BGS = [[236, 229, 219], [248, 246, 242]];
 const lookIsPhoto = (look) => look.mode === "modeled" ? true : look.mode === "flatlay" ? false : null;
 function detectPhotoFromCorner(image) {
   try {
@@ -904,7 +905,7 @@ function detectPhotoFromCorner(image) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
     context.drawImage(image, 0, 0, image.naturalWidth * 0.03 || 1, image.naturalHeight * 0.03 || 1, 0, 0, 4, 4);
     const [r, g, b] = context.getImageData(1, 1, 1, 1).data;
-    return Math.abs(r - FLATLAY_BG[0]) + Math.abs(g - FLATLAY_BG[1]) + Math.abs(b - FLATLAY_BG[2]) > 18;
+    return FLATLAY_BGS.every((bg) => Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]) > 18);
   } catch {
     return false;
   }
@@ -2270,6 +2271,26 @@ export function App() {
       }
     } catch {}
   }, [activeWardrobeId]);
+
+  // Older flat lays are laid out again on the wardrobe card colour, a few at a time
+  const flatlayRefresh = useRef(false);
+  useEffect(() => {
+    if (flatlayRefresh.current || !outfits.length) return;
+    flatlayRefresh.current = true;
+    (async () => {
+      let changed = false;
+      for (let round = 0; round < 40; round++) {
+        try {
+          const res = await fetch(`/api/import/outfits/refresh-flatlays?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, { method: "POST", headers: { "x-wardrobe-id": activeWardrobeId } });
+          if (!res.ok) break;
+          const data = await res.json();
+          if (data.refreshed) changed = true;
+          if (!data.remaining || !data.refreshed) break;
+        } catch { break; }
+      }
+      if (changed) fetchOutfits();
+    })();
+  }, [outfits.length, activeWardrobeId, fetchOutfits]);
 
   const fetchUserProfile = useCallback(async () => {
     try {

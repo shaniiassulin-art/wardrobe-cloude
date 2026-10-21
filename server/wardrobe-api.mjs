@@ -172,7 +172,7 @@ export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
   const isShoes = category === "shoes" || /shoe|sneaker|boot|sandal|heel|loafer|נעל|סניקרס|מגף|מגפ|סנדל|כפכף/i.test(name);
   // Shoes are always shown the same way: the pair side by side, toes towards the viewer
   const shoeLayout = isShoes
-    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, standing upright side by side on their soles with a small even gap between them, both toes pointing straight toward the camera, seen from the front at a slightly elevated eye level (about 20 degrees above) so the toe box, vamp, laces or straps and the opening are all visible. Both shoes are identical mirror images at the same size and height. If the reference shows only one shoe or shows them from the side, reconstruct the matching second shoe and turn both to this front view.`
+    ? `\n\nShoe presentation (mandatory): Show the complete PAIR, left and right shoe, side by side with a small even gap between them, photographed from directly above (top-down, bird's-eye flat-lay view, camera looking straight down). Both shoes rest on their soles, parallel, toes pointing toward the top of the image and heels toward the bottom, so the whole upper is visible from above: toe box, vamp, laces or straps, the opening and the insole. Both shoes are identical mirror images at the same size. If the reference shows only one shoe or shows them from another angle, reconstruct the matching second shoe and turn both to this top-down view.`
     : "";
 
   return `Use case: background-extraction
@@ -192,7 +192,7 @@ Lighting: Neutral diffuse product lighting contained on the garment only.
 
 Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.${shoeLayout}
 
-Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side and facing the camera, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
+Critical: Use no ${chromaKey} anywhere in the garment. ${isShoes ? "Produce exactly one complete pair of shoes, side by side, seen from directly above, with a crisp, separable outer silhouette." : "Produce exactly one complete garment with a crisp, separable outer silhouette."}`;
 }
 
 function cleanupTolerance(value) {
@@ -675,6 +675,12 @@ async function splitDownTheMiddle(buffer) {
   const right = await sharp(buffer).extract({ left: half, top: 0, width: width - half, height }).png().toBuffer();
   return { left, right, ratio: height / width };
 }
+
+// The same colour as the wardrobe cards, so every look sits on one background and
+// white pieces stay visible. (Looks made before used a near-white 248,246,242.)
+const FLATLAY_BACKGROUND = { r: 236, g: 229, b: 219, alpha: 1 };
+const OLD_FLATLAY_BACKGROUND = [248, 246, 242];
+const FLATLAY_VERSION = 2;
 
 export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, body = {}) {
   // Width of the chest and of the waist compared with the hips (photos of trousers
@@ -1504,7 +1510,7 @@ export async function generateFlatLayOutfit(garmentEntries = [], styling = {}, b
       width: Math.round(finalCanvasWidth),
       height: Math.round(finalCanvasHeight),
       channels: 4,
-      background: { r: 248, g: 246, b: 242, alpha: 1 },
+      background: FLATLAY_BACKGROUND,
     },
   }).png().toBuffer();
 
@@ -2251,6 +2257,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
       notes: notes?.trim() || null,
       mode: isFlatlay ? "flatlay" : "modeled",
       styling: isFlatlay && Object.keys(styling).length ? styling : null,
+      ...(isFlatlay ? { flatlayVersion: FLATLAY_VERSION } : {}),
       setting: backdrop,
       image: `/api/import/outfits/images/${filename}?t=${Date.now()}`,
       createdAt: new Date().toISOString(),
@@ -2322,6 +2329,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
       notes: outfitData.notes || null,
       mode: outfitData.mode === "flatlay" ? "flatlay" : outfitData.mode === "modeled" ? "modeled" : null,
       styling: Object.keys(styling).length ? styling : null,
+      ...(outfitData.mode === "flatlay" ? { flatlayVersion: FLATLAY_VERSION } : {}),
       setting: outfitData.setting || "Custom wardrobe outfit",
       image: outfitImage,
       createdAt: outfitData.createdAt || new Date().toISOString(),
@@ -3561,6 +3569,53 @@ ${list}`;
           };
         });
         return json(200, { summary: String(parsed.summary || ""), pieces });
+      }
+      if (url.pathname === "/api/import/outfits/refresh-flatlays" && request.method === "POST") {
+        // Flat lays made before the background matched the wardrobe cards are laid out
+        // again (free, no AI), a few per request so a request never runs long
+        const wId = resolveWardrobeId(request, url);
+        const outfits = await loadOutfits(wId);
+        const records = await loadImported(wId);
+        const isOldFlatlay = async (outfit) => {
+          if ((outfit.flatlayVersion || 0) >= FLATLAY_VERSION || outfit.mode === "modeled" || outfit.flatlayChecked) return false;
+          const name = String(outfit.image || "").match(/\/api\/import\/outfits\/images\/([^?]+)/)?.[1];
+          if (!name) return false;
+          if (outfit.mode === "flatlay") return name;
+          // Older looks without a mode: a flat lay has the old plain background in its corner
+          const bytes = await store.getBytes(outfitImageKey(name)).catch(() => null);
+          if (!bytes) return false;
+          const { data } = await sharp(bytes).extract({ left: 2, top: 2, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+          return Math.abs(data[0] - OLD_FLATLAY_BACKGROUND[0]) + Math.abs(data[1] - OLD_FLATLAY_BACKGROUND[1]) + Math.abs(data[2] - OLD_FLATLAY_BACKGROUND[2]) <= 6 ? name : false;
+        };
+        let done = 0;
+        let changed = false;
+        const started = Date.now();
+        for (const outfit of outfits) {
+          if (done >= 4 || Date.now() - started > 6000) break;
+          const name = await isOldFlatlay(outfit);
+          if (!name) {
+            if (!outfit.flatlayVersion && outfit.mode !== "modeled" && !outfit.flatlayChecked) { outfit.flatlayChecked = true; changed = true; }
+            continue;
+          }
+          const garmentEntries = [];
+          for (const id of outfit.garmentIds || []) {
+            const item = records.find((record) => record.id === id);
+            const buffer = item ? await store.getBytes(libraryKey(`${id}-garment.png`)) : null;
+            if (buffer) garmentEntries.push({ buffer, item });
+          }
+          if (garmentEntries.length) {
+            const bytes = await generateFlatLayOutfit(await withOpenVersions(garmentEntries), normalizeFlatlayStyling(outfit.styling || {}), await bodyOf(wId));
+            await store.setBytes(outfitImageKey(name), bytes);
+            outfit.image = `/api/import/outfits/images/${name}?t=${Date.now()}`;
+          }
+          outfit.mode = "flatlay";
+          outfit.flatlayVersion = FLATLAY_VERSION;
+          changed = true;
+          done += 1;
+        }
+        if (changed) await saveOutfits(wId, outfits);
+        const remaining = (await Promise.all(outfits.map(async (outfit) => Boolean(await isOldFlatlay(outfit))))).filter(Boolean).length;
+        return json(200, { refreshed: done, remaining });
       }
       if (url.pathname === "/api/import/outfits/prompt" && request.method === "POST") {
         const input = await body(request);
