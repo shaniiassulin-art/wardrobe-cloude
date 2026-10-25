@@ -1450,6 +1450,30 @@ const STYLING_LABELS = {
 };
 const stylingSummary = (styling) => Object.entries(styling || {}).map(([key, value]) => STYLING_LABELS[key]?.[value]).filter(Boolean).join(" · ");
 
+// Loads the newest version of the site and its data, without closing the app:
+// asks the service worker for an update, drops the cached page shell, reloads
+function RefreshButton() {
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration?.();
+      await registration?.update?.().catch(() => {});
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter((key) => key.includes("shell")).map((key) => caches.delete(key)));
+      }
+    } catch {}
+    window.location.reload();
+  };
+  return (
+    <button type="button" className="refresh-header-btn" onClick={refresh} disabled={busy} title="רענון: טעינת הגרסה והנתונים העדכניים" aria-label="רענון האתר">
+      <ArrowClockwise size={18} className={busy ? "spin" : ""} aria-hidden="true" />
+    </button>
+  );
+}
+
 // Two-option switch used for the free flat-lay styling choices
 function StylingChoice({ label, value, options, onChange, disabled }) {
   return (
@@ -2858,6 +2882,7 @@ export function App() {
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
             </p>
             <div className="header-actions">
+              <RefreshButton />
               <button
                 type="button"
                 className="user-account-header-btn"

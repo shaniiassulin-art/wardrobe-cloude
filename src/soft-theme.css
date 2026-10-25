@@ -882,3 +882,9 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 /* Editing a look: update it, or keep it and save the changes as a new look */
 .lb-footer__save { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 .lb-footer__save .lb-button { width: 100%; justify-content: center; white-space: nowrap; }
+
+/* Refresh: a round button beside the account buttons at the top of every screen */
+.refresh-header-btn { display: inline-grid; place-items: center; flex: none; width: 39px; height: 39px; padding: 0; border: 0; border-radius: 50%; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-soft, 0 4px 14px rgba(39, 31, 23, .06)); cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.refresh-header-btn:hover { background: rgba(46, 42, 38, .07); }
+.refresh-header-btn:active { transform: scale(.94); }
+.refresh-header-btn:disabled { opacity: .7; cursor: default; }
