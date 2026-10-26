@@ -959,3 +959,11 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
 
 /* The small model photo beside the profile button shows the top of the photo (the face) */
 .model-ref-avatar { object-fit: cover; object-position: center top; }
+
+/* Phone: the profile button is just the coloured circle with the letter, filling the whole button */
+@media (max-width: 520px) {
+  .user-account-header-btn { background: transparent; border: 0; box-shadow: none; }
+  .user-account-header-btn:hover { background: transparent; }
+  .user-account-header-btn .user-account-avatar { width: 40px; height: 40px; font-size: 16px; }
+  .user-account-header-btn .user-sync-indicator { bottom: 1px; inset-inline-end: 1px; box-shadow: 0 0 0 2px var(--paper); }
+}
