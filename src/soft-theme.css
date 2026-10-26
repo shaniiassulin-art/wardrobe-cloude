@@ -1018,3 +1018,15 @@ button, .lb-label, .gallery-item__name, .wardrobe-filters__group legend { font-w
 h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .piece-count { letter-spacing: 0; }
 .lb-button.is-primary, .primary-button, .create-look-btn, .category-nav button.active { font-weight: 550; }
+
+/* Body measurements: the four fields and "save" on one row */
+.body-form { display: flex; align-items: flex-end; gap: 8px; }
+.body-form .body-fields { flex: 1 1 auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.body-form .body-field { gap: 4px; min-width: 0; font-size: 12px; }
+.body-form .body-field span { white-space: nowrap; }
+.body-form .body-field .account-input { width: 100%; min-width: 0; height: 40px; padding: 0 4px; font-size: 14px; text-align: center; }
+.body-form .body-field .account-input::placeholder { font-size: 11px; }
+.body-form__save { flex: 0 0 auto; height: 40px; padding: 0 14px; white-space: nowrap; }
+@media (max-width: 420px) { .body-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* The wardrobe's name a little smaller */
+.animated-title { font-size: clamp(27px, 3.8vw, 42px); }

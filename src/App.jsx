@@ -1149,7 +1149,7 @@ function BodySection({ user, onSaveUser }) {
   return (
     <section className="account-section" aria-labelledby="account-body-title">
       <h3 id="account-body-title">מידות גוף</h3>
-      <form onSubmit={save}>
+      <form onSubmit={save} className="body-form">
         <div className="body-fields">
           {fields.map(([key, label]) => (
             <label key={key} className="body-field">
@@ -1158,11 +1158,9 @@ function BodySection({ user, onSaveUser }) {
             </label>
           ))}
         </div>
-        <div className="account-row">
-          <button className="secondary-button" type="submit" disabled={!changed || state === "saving"}>
-            {state === "saving" ? "שומר..." : state === "saved" ? <><Check size={14} /> נשמר</> : "שמירה"}
-          </button>
-        </div>
+        <button className="secondary-button body-form__save" type="submit" disabled={!changed || state === "saving"}>
+          {state === "saving" ? "שומר..." : state === "saved" ? <><Check size={14} /> נשמר</> : "שמירה"}
+        </button>
       </form>
       <p className="account-hint">בסנטימטרים. היחס בין החזה, המותן והירכיים קובע את רוחב החולצה והחגורה בפריסה, וכל המידות נשלחות ל-AI כדי שהתמונות עלייך ישמרו על הפרופורציות שלך.</p>
     </section>
