@@ -91,7 +91,7 @@ export function SuitcasePicker({ suitcases, itemIds, field = "garmentIds", onAdd
 }
 
 // Suitcases tab: one suitcase per event, each saved on the server
-export function LuggageView({ items, outfits = [], onOpenLook, suitcases, activeId, onSelect, onCreate, onRename, onDelete, onToggleItem, onGenerateFlatlay, onOpenItem, typeLabel }) {
+export function LuggageView({ items, outfits = [], onOpenLook, suitcases, activeId, onSelect, onCreate, onRename, onDelete, onToggleItem, onGenerateFlatlay, onOpenItem, typeLabel, selecting = false, checkedIds = [], onToggleCheck }) {
   const [newTitle, setNewTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(null);
   const active = suitcases.find((suitcase) => suitcase.id === activeId) || suitcases[0] || null;
@@ -125,11 +125,13 @@ export function LuggageView({ items, outfits = [], onOpenLook, suitcases, active
           <button
             key={suitcase.id}
             type="button"
-            className={`suitcase-chip${active?.id === suitcase.id ? " is-active" : ""}`}
-            onClick={() => onSelect(suitcase.id)}
-            aria-pressed={active?.id === suitcase.id}
+            className={`suitcase-chip${!selecting && active?.id === suitcase.id ? " is-active" : ""}${selecting && checkedIds.includes(suitcase.id) ? " is-checked" : ""}`}
+            onClick={() => (selecting ? onToggleCheck?.(suitcase.id) : onSelect(suitcase.id))}
+            aria-pressed={selecting ? checkedIds.includes(suitcase.id) : active?.id === suitcase.id}
           >
-            <Suitcase size={16} weight={active?.id === suitcase.id ? "fill" : "regular"} aria-hidden="true" />
+            {selecting
+              ? <span className="suitcase-chip__check" aria-hidden="true">{checkedIds.includes(suitcase.id) && <Check size={12} weight="bold" />}</span>
+              : <Suitcase size={16} weight={active?.id === suitcase.id ? "fill" : "regular"} aria-hidden="true" />}
             <span>{suitcase.title || "מזוודה"}</span>
             <small>{(suitcase.garmentIds?.length || 0) + (suitcase.outfitIds?.length || 0)}</small>
           </button>

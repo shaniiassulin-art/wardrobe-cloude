@@ -14,7 +14,7 @@ const PART_LABELS = {
 };
 
 // The Wishlist: one card per saved photo, with the pieces she wants from it
-export function WishlistView({ items, wardrobeId, onChange, onRemoved }) {
+export function WishlistView({ items, wardrobeId, onChange, onRemoved, selecting = false, checkedIds = [], onToggleCheck }) {
   const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState(null);
   const open = items.find((entry) => entry.id === openId) || null;
@@ -40,11 +40,12 @@ export function WishlistView({ items, wardrobeId, onChange, onRemoved }) {
 
   return (
     <section className="wishlist-view" aria-label="Wishlist">
-      <div className="wishlist-bar">{addButton}</div>
+      {!selecting && <div className="wishlist-bar">{addButton}</div>}
       <div className="gallery-grid wishlist-grid">
         {items.map((entry) => (
-          <article key={entry.id} className="gallery-item wishlist-item">
-            <button type="button" className="wishlist-item__img" onClick={() => setOpenId(entry.id)} aria-label="פתיחת התמונה">
+          <article key={entry.id} className={`gallery-item wishlist-item${selecting && checkedIds.includes(entry.id) ? " is-checked" : ""}`}>
+            <button type="button" className="wishlist-item__img" onClick={() => (selecting ? onToggleCheck?.(entry.id) : setOpenId(entry.id))} aria-label={selecting ? "בחירת התמונה" : "פתיחת התמונה"} aria-pressed={selecting ? checkedIds.includes(entry.id) : undefined}>
+              {selecting && <span className="gallery-item__check" aria-hidden="true">{checkedIds.includes(entry.id) && <Check size={16} weight="bold" />}</span>}
               {entry.photo ? <img src={entry.photo} alt="" loading="lazy" decoding="async" /> : <span className="wishlist-item__swatch" aria-hidden="true" />}
               {entry.pieces.length > 1 && <span className="wishlist-item__count">{entry.pieces.length} פריטים</span>}
             </button>

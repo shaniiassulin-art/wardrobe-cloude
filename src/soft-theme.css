@@ -936,3 +936,19 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .lb-remake__note { font-size: 12.5px; color: var(--accent); }
 .lb-footer__actions:empty { display: none; }
 .lb-footer__actions:empty + .lb-footer__save { margin-top: 0; }
+
+/* Selection in every view: the same round check in the corner */
+.look-tile .gallery-item__main, .wishlist-item__img { position: relative; }
+.wishlist-item__img .gallery-item__check, .look-tile .gallery-item__check { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 2; }
+.look-tile.is-checked .gallery-item__main, .wishlist-item.is-checked .wishlist-item__img { box-shadow: inset 0 0 0 3px var(--ink); }
+.suitcase-chip__check { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: rgba(255, 255, 255, .85); box-shadow: inset 0 0 0 1px var(--line); color: var(--paper); }
+.suitcase-chip.is-checked { background: var(--ink); color: var(--paper); }
+.suitcase-chip.is-checked .suitcase-chip__check { background: var(--paper); color: var(--ink); }
+
+/* Scrolling inside a window never scrolls the page behind it */
+html:has(.builder-modal-overlay), html:has(.lightbox), html:has(.item-sheet), html:has(.account-modal),
+body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), body:has(.account-modal) { overflow: hidden; }
+.builder-modal-overlay, .builder-modal, .lb-body, .item-sheet, .lightbox { overscroll-behavior: contain; }
+
+/* Wishlist window: the same space between the close button and the photo as elsewhere */
+.wish-modal .lb-body { padding-top: 18px; }

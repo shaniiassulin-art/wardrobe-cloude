@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, SlidersHorizontal } from "@phosphor-icons/react";
-import { ArrowClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, PencilSimple, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, PencilSimple, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { fittedImage, imageFallback, thumbUrl, toBrowserImage } from "./image-files.js";
@@ -2223,8 +2223,12 @@ export function App() {
   const [builderInitialItems, setBuilderInitialItems] = useState([]);
   const [builderInitialExtras, setBuilderInitialExtras] = useState({});
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [selectMode, setSelectMode] = useState(false);
+  // One selection at a time: wardrobe items, looks, suitcases, Wishlist or archive.
+  // Opening a selection of another kind (or changing tab) closes the previous one.
+  const [selectKind, setSelectKind] = useState(null);
   const [checkedIds, setCheckedIds] = useState([]);
+  const selectMode = selectKind === "items";
+  const setSelectMode = (on) => { setSelectKind(on ? "items" : null); setCheckedIds([]); };
   const [packingIds, setPackingIds] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2687,6 +2691,8 @@ export function App() {
   const chooseType = (typeId) => {
     setActiveType(typeId);
     setSelectedId(null);
+    setSelectKind(null);
+    setCheckedIds([]);
   };
 
   const saveSuitcase = (suitcase) => {
@@ -2741,7 +2747,9 @@ export function App() {
   };
 
   const toggleChecked = (id) => setCheckedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
-  const exitSelectMode = () => { setSelectMode(false); setCheckedIds([]); };
+  const exitSelectMode = () => { setSelectKind(null); setCheckedIds([]); };
+  const viewSelectKind = activeType === "looks" ? "looks" : activeType === "luggage" ? "suitcases" : activeType === "wishlist" ? "wishlist" : activeType === "archive" ? "archive" : "items";
+  const startSelect = () => { setCheckedIds([]); setSelectKind(viewSelectKind); };
 
   const handleLuggageFlatlay = async (packedPieces, suitcase) => {
     if (!packedPieces.length) return;
@@ -2875,6 +2883,22 @@ export function App() {
     await fetchArchive();
   };
 
+  // Deletes what is selected in the current selection (looks, suitcases, Wishlist photos, archive for good)
+  const deleteChecked = async () => {
+    const ids = [...checkedIds];
+    if (!ids.length) return;
+    const noun = { looks: ids.length === 1 ? "הלוק" : `${ids.length} לוקים`, suitcases: ids.length === 1 ? "המזוודה" : `${ids.length} מזוודות`, wishlist: ids.length === 1 ? "התמונה מה-Wishlist" : `${ids.length} תמונות מה-Wishlist`, archive: ids.length === 1 ? "הפריט לצמיתות" : `${ids.length} פריטים לצמיתות` }[selectKind];
+    if (!window.confirm(`למחוק את ${noun}? אי אפשר לבטל את זה.`)) return;
+    if (selectKind === "looks") await Promise.all(ids.map((id) => deleteOutfit(id)));
+    if (selectKind === "suitcases") ids.forEach((id) => deleteSuitcase(id));
+    if (selectKind === "wishlist") {
+      await Promise.all(ids.map((id) => fetch(`/api/import/wishlist/${id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, { method: "DELETE", headers: { "x-wardrobe-id": activeWardrobeId } }).catch(() => {})));
+      setWishlist((current) => current.filter((entry) => !ids.includes(entry.id)));
+    }
+    if (selectKind === "archive") await purgeArchived(ids);
+    exitSelectMode();
+  };
+
   const deleteOutfit = async (id) => {
     try {
       await fetch(`/api/import/outfits/${id}?wardrobeId=${encodeURIComponent(activeWardrobeId)}`, {
@@ -2932,16 +2956,16 @@ export function App() {
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
               </button>
 
-              {isWardrobeView && items.length > 0 && (
+              {((isWardrobeView && items.length > 0) || (activeType === "looks" && outfits.length > 0) || (activeType === "luggage" && suitcases.length > 0) || (activeType === "wishlist" && wishlist.length > 0) || (activeType === "archive" && archived.length > 0)) && (
                 <button
                   type="button"
-                  className={`secondary-header-btn select-toggle${selectMode ? " is-active" : ""}`}
-                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-                  aria-pressed={selectMode}
+                  className={`secondary-header-btn select-toggle${selectKind === viewSelectKind ? " is-active" : ""}`}
+                  onClick={() => (selectKind === viewSelectKind ? exitSelectMode() : startSelect())}
+                  aria-pressed={selectKind === viewSelectKind}
                 >
                   <CheckSquare size={16} aria-hidden="true" />
-                  <span className="label-long">{selectMode ? "סיום בחירה" : "בחירת פריטים"}</span>
-                  <span className="label-short">{selectMode ? "סיום" : "בחירה"}</span>
+                  <span className="label-long">{selectKind === viewSelectKind ? "סיום בחירה" : "בחירה"}</span>
+                  <span className="label-short">{selectKind === viewSelectKind ? "סיום" : "בחירה"}</span>
                 </button>
               )}
 
@@ -3031,9 +3055,10 @@ export function App() {
             {outfits.length > 0 ? (
               <section className="gallery-grid looks-gallery" aria-label="לוקים">
                 {visibleLooks.map((look) => (
-                  <div key={look.id} className={`gallery-item look-tile${(lookIsPhoto(look) ?? photoLooks[look.id]) ? " is-photo" : ""}`}>
-                    <button type="button" className="gallery-item__main" onClick={() => setSelectedLook(look)} aria-label={`צפייה בלוק ${look.name}`}>
+                  <div key={look.id} className={`gallery-item look-tile${(lookIsPhoto(look) ?? photoLooks[look.id]) ? " is-photo" : ""}${selectKind === "looks" && checkedIds.includes(look.id) ? " is-checked" : ""}`}>
+                    <button type="button" className="gallery-item__main" onClick={() => (selectKind === "looks" ? toggleChecked(look.id) : setSelectedLook(look))} aria-label={selectKind === "looks" ? `בחירת ${look.name}` : `צפייה בלוק ${look.name}`} aria-pressed={selectKind === "looks" ? checkedIds.includes(look.id) : undefined}>
                       <LookTileImage look={look} onPhoto={(isPhoto) => setPhotoLooks((current) => current[look.id] === isPhoto ? current : { ...current, [look.id]: isPhoto })} />
+                      {selectKind === "looks" && <span className="gallery-item__check" aria-hidden="true">{checkedIds.includes(look.id) && <Check size={16} weight="bold" />}</span>}
                     </button>
                   </div>
                 ))}
@@ -3067,14 +3092,17 @@ export function App() {
             onGenerateFlatlay={handleLuggageFlatlay}
             onOpenItem={setSelectedId}
             typeLabel={(part) => TYPE_MAP[part]?.singular || part}
+            selecting={selectKind === "suitcases"}
+            checkedIds={checkedIds}
+            onToggleCheck={toggleChecked}
           />
         )}
 
         {activeType === "wishlist" && (
-          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} onChange={(entry) => setWishlist((current) => current.some((other) => other.id === entry.id) ? current.map((other) => other.id === entry.id ? entry : other) : [entry, ...current])} onRemoved={(id) => setWishlist((current) => current.filter((other) => other.id !== id))} />
+          <WishlistView items={wishlist} wardrobeId={activeWardrobeId} selecting={selectKind === "wishlist"} checkedIds={checkedIds} onToggleCheck={toggleChecked} onChange={(entry) => setWishlist((current) => current.some((other) => other.id === entry.id) ? current.map((other) => other.id === entry.id ? entry : other) : [entry, ...current])} onRemoved={(id) => setWishlist((current) => current.filter((other) => other.id !== id))} />
         )}
         {activeType === "archive" && (
-          <ArchiveView items={archived} onRestore={restoreArchived} onPurge={purgeArchived} />
+          <ArchiveView items={archived} selecting={selectKind === "archive"} checkedIds={checkedIds} onToggleCheck={toggleChecked} onRestore={restoreArchived} />
         )}
 
         {/* WARDROBE ITEMS VIEW */}
@@ -3115,6 +3143,31 @@ export function App() {
           </section>
         )}
       </main>
+
+      {selectKind && selectKind !== "items" && (
+        <div className="selection-bar" role="region" aria-label="פעולות על מה שנבחר">
+          <span className="selection-bar__count">
+            {checkedIds.length ? `נבחרו ${checkedIds.length}` : { looks: "בחרי לוקים", suitcases: "בחרי מזוודות", wishlist: "בחרי תמונות מה-Wishlist", archive: "בחרי פריטים מהארכיון" }[selectKind]}
+          </span>
+          <div className="selection-bar__actions">
+            <button type="button" className="secondary-button" onClick={() => {
+              const all = { looks: visibleLooks, suitcases, wishlist, archive: archived }[selectKind] || [];
+              setCheckedIds(checkedIds.length === all.length ? [] : all.map((entry) => entry.id));
+            }}>
+              {checkedIds.length && checkedIds.length === ({ looks: visibleLooks, suitcases, wishlist, archive: archived }[selectKind] || []).length ? "ביטול הבחירה" : "בחירת הכל"}
+            </button>
+            {selectKind === "archive" && (
+              <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={async () => { await restoreArchived(checkedIds); exitSelectMode(); }}>
+                <ArrowCounterClockwise size={15} aria-hidden="true" /> החזרה לארון
+              </button>
+            )}
+            <button type="button" className="secondary-button selection-bar__delete" disabled={!checkedIds.length} onClick={() => deleteChecked()}>
+              <Trash size={15} aria-hidden="true" /> {selectKind === "archive" ? "מחיקה לצמיתות" : "מחיקה"}
+            </button>
+            <button type="button" className="import-icon-button" onClick={exitSelectMode} aria-label="ביטול הבחירה"><X size={18} /></button>
+          </div>
+        </div>
+      )}
 
       {selectMode && (
         <div className="selection-bar" role="region" aria-label="פעולות על הפריטים שנבחרו">
@@ -3271,7 +3324,7 @@ export function App() {
 
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || selectMode || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || Boolean(selectKind) || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }
