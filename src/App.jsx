@@ -2224,7 +2224,7 @@ export function App() {
   const [builderInitialExtras, setBuilderInitialExtras] = useState({});
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   // One selection at a time: wardrobe items, looks, suitcases, Wishlist or archive.
-  // Opening a selection of another kind (or changing tab) closes the previous one.
+  // Opening a selection of another kind closes the previous one.
   const [selectKind, setSelectKind] = useState(null);
   const [checkedIds, setCheckedIds] = useState([]);
   const selectMode = selectKind === "items";
@@ -2691,8 +2691,8 @@ export function App() {
   const chooseType = (typeId) => {
     setActiveType(typeId);
     setSelectedId(null);
-    setSelectKind(null);
-    setCheckedIds([]);
+    // A selection stays open across tabs; it closes only when "בחירה" is pressed
+    // on a page that selects something else
   };
 
   const saveSuitcase = (suitcase) => {
