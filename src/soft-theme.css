@@ -915,3 +915,24 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 @media (max-width: 1100px) { .look-filters { margin-inline: 32px; } }
 @media (max-width: 720px) { .look-filters { margin-inline: 20px; } }
 @media (max-width: 520px) { .look-filters { margin: 14px var(--gutter) 0; } }
+
+/* Look builder: one even rhythm. The type switch scrolls away with the rest,
+   every block is the same distance from the next, and each field (notes, name,
+   event, tags) has the same space above it. */
+.look-builder .lb-body { display: flex; flex-direction: column; gap: 22px; padding-top: 18px; padding-bottom: 22px; }
+.look-builder .lb-body > * { flex-shrink: 0; margin-top: 0; margin-bottom: 0; }
+.look-builder .lb-body > .lb-mode { margin: 0; }
+.look-builder .lb-body > .lb-preview { margin: 0; }
+.look-builder .lb-body > .lb-section { margin: 0; padding-top: 22px; border-top: 1px solid var(--line); }
+.look-builder .lb-section__head { margin-bottom: 14px; }
+.lb-fields .lb-label { display: block; margin: 22px 0 8px; }
+.lb-fields > .lb-label:first-child { margin-top: 0; }
+.lb-fields .lb-input + .lb-label, .lb-fields .lb-suggest + .lb-label { margin-top: 22px; }
+.lb-fields .lb-suggest { margin-top: 10px; }
+.lb-fields .gpt-helper { margin-top: 14px; }
+/* "Make it again" sits right under the picture */
+.lb-remake { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: -10px !important; }
+.lb-remake .lb-button { flex: 0 0 auto; }
+.lb-remake__note { font-size: 12.5px; color: var(--accent); }
+.lb-footer__actions:empty { display: none; }
+.lb-footer__actions:empty + .lb-footer__save { margin-top: 0; }

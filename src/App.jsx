@@ -1783,25 +1783,35 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
           </button>
         </header>
 
-        <div className="lb-mode" role="radiogroup" aria-label="סוג הלוק">
-          {[
-            { id: "flatlay", name: "פריסה שטוחה", note: PRICES.free },
-            { id: "modeled", name: "עליי", note: `AI · ${lookOnModelPrice(selectedIds.length)}` },
-          ].map((option) => (
-            <button key={option.id} type="button" role="radio" aria-checked={outfitMode === option.id} className={outfitMode === option.id ? "is-on" : ""} onClick={() => switchMode(option.id)}>
-              <span className="lb-mode__name">{option.name}</span>
-              <span className="lb-mode__note">{option.note}</span>
-            </button>
-          ))}
-        </div>
 
         <div className="lb-body" ref={bodyRef}>
+          <div className="lb-mode" role="radiogroup" aria-label="סוג הלוק">
+            {[
+              { id: "flatlay", name: "פריסה שטוחה", note: PRICES.free },
+              { id: "modeled", name: "עליי", note: `AI · ${lookOnModelPrice(selectedIds.length)}` },
+            ].map((option) => (
+              <button key={option.id} type="button" role="radio" aria-checked={outfitMode === option.id} className={outfitMode === option.id ? "is-on" : ""} onClick={() => switchMode(option.id)}>
+                <span className="lb-mode__name">{option.name}</span>
+                <span className="lb-mode__note">{option.note}</span>
+              </button>
+            ))}
+          </div>
           {generatedLook && (
             <section className="lb-preview" aria-label="תצוגה מקדימה">
               <img src={thumbUrl(generatedLook.image, 1080)} onError={imageFallback(generatedLook.image)} alt={generatedLook.name} />
               {generating && <span className="lb-preview__busy"><ArrowClockwise size={18} className="spin" /></span>}
               {!generating && justCreated > 0 && <span key={justCreated} className="lb-preview__done" role="status"><Check size={14} weight="bold" /> הלוק נוצר</span>}
             </section>
+          )}
+          {generatedLook && (
+            <div className="lb-remake">
+              <button className={`lb-button${pendingChanges ? " is-primary" : ""}`} type="button" disabled={generating || saving} onClick={() => handleGenerate()}>
+                <ArrowClockwise size={15} className={generating ? "spin" : ""} />
+                <span>{generating ? "יוצר..." : outfitMode === "flatlay" ? (pendingChanges ? "פריסה מחדש לפי השינויים" : "פריסה מחדש") : (pendingChanges ? "יצירה מחדש עליי לפי השינויים" : "יצירה מחדש עליי")}</span>
+                {!generating && <small>{price}</small>}
+              </button>
+              {pendingChanges && !generating && <span className="lb-remake__note">יש שינויים שעוד לא מופיעים בתמונה</span>}
+            </div>
           )}
 
           <section className="lb-section">
@@ -1918,7 +1928,6 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
               {styling.layout !== "body" && <p className="lb-layers__hint">כל פריט שלם ובמקום משלו, ברווח מהשאר, לפי האורך והגזרה שהוגדרו לו</p>}
               {bodyChoices && manyLayers && (
                 <div className="lb-layers">
-                  <p className="lb-layers__hint">סדר השכבות על הגוף, מהקרובה לגוף ועד החיצונית, ואיך כל שכבה מונחת</p>
                   {upperItems.map((item, index) => {
                     const style = index === 0 ? null : (layerStyles[item.id] || defaultLayerStyle(item));
                     // Open (fronts at the sides) or closed (laid half over the layer under it).
@@ -1979,7 +1988,7 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             </section>
           )}
 
-          <section className="lb-section">
+          <section className="lb-section lb-fields">
             <label className="lb-label" htmlFor="look-builder-notes">{outfitMode === "flatlay" ? "הערות" : "הערה ל-AI"} <span>אופציונלי</span></label>
             <textarea
               id="look-builder-notes"
@@ -2033,16 +2042,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
         <footer className="lb-footer">
           {builderError && <p className="lb-error" role="alert">{builderError}</p>}
           {paidUnsaved && !builderError && <p className="lb-paid" role="status">הלוק כבר שולם. שמרי אותו כדי לא לאבד אותו.</p>}
-          {pendingChanges && generatedLook && outfitMode === "flatlay" && !builderError && <p className="lb-paid" role="status">יש שינויים בסידור. לחצי "שוב" כדי לראות אותם בפריסה.</p>}
+
           <div className="lb-footer__actions">
-            <button className="lb-button is-ghost" type="button" disabled={generating || saving} onClick={requestClose}>ביטול</button>
-            {generatedLook && (
-              <button className="lb-button" type="button" disabled={generating || saving} onClick={() => handleGenerate()}>
-                {generating && <ArrowClockwise size={15} className="spin" />}
-                <span>{generating ? "יוצר..." : "שוב"}</span>
-                {!generating && <small>{price}</small>}
-              </button>
-            )}
             {generatedLook && editLook ? null : generatedLook ? (
               <button className="lb-button is-primary" type="button" disabled={saving || generating} onClick={() => handleSave()}>
                 <FloppyDisk size={15} />
