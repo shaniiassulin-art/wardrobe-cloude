@@ -2937,6 +2937,18 @@ export function App() {
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
             </p>
             <div className="header-actions">
+              {((isWardrobeView && items.length > 0) || (activeType === "looks" && outfits.length > 0) || (activeType === "luggage" && suitcases.length > 0) || (activeType === "wishlist" && wishlist.length > 0) || (activeType === "archive" && archived.length > 0)) && (
+                <button
+                  type="button"
+                  className={`secondary-header-btn select-toggle${selectKind === viewSelectKind ? " is-active" : ""}`}
+                  onClick={() => (selectKind === viewSelectKind ? exitSelectMode() : startSelect())}
+                  aria-pressed={selectKind === viewSelectKind}
+                >
+                  <CheckSquare size={16} aria-hidden="true" />
+                  <span className="label-long">{selectKind === viewSelectKind ? "סיום בחירה" : "בחירה"}</span>
+                  <span className="label-short">{selectKind === viewSelectKind ? "סיום" : "בחירה"}</span>
+                </button>
+              )}
               <RefreshButton />
               <button
                 type="button"
@@ -2956,18 +2968,7 @@ export function App() {
                 <span className="user-sync-indicator" title="מסונכרן עם השרת בזמן אמת" />
               </button>
 
-              {((isWardrobeView && items.length > 0) || (activeType === "looks" && outfits.length > 0) || (activeType === "luggage" && suitcases.length > 0) || (activeType === "wishlist" && wishlist.length > 0) || (activeType === "archive" && archived.length > 0)) && (
-                <button
-                  type="button"
-                  className={`secondary-header-btn select-toggle${selectKind === viewSelectKind ? " is-active" : ""}`}
-                  onClick={() => (selectKind === viewSelectKind ? exitSelectMode() : startSelect())}
-                  aria-pressed={selectKind === viewSelectKind}
-                >
-                  <CheckSquare size={16} aria-hidden="true" />
-                  <span className="label-long">{selectKind === viewSelectKind ? "סיום בחירה" : "בחירה"}</span>
-                  <span className="label-short">{selectKind === viewSelectKind ? "סיום" : "בחירה"}</span>
-                </button>
-              )}
+
 
               <input
                 ref={modelFileInputRef}
