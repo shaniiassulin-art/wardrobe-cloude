@@ -478,7 +478,7 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .lightbox { padding: 0; display: block; }
 .lightbox__frame { position: absolute; inset: 0; display: flex; overflow: hidden; padding: calc(64px + env(safe-area-inset-top)) 16px calc(56px + env(safe-area-inset-bottom)); }
 .lightbox__frame { touch-action: none; }
-.lightbox__frame .lightbox__image { margin: auto; max-width: min(100%, 1100px); max-height: 100%; cursor: zoom-in; transform-origin: 0 0; transition: transform 220ms ease; will-change: transform; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.lightbox__frame .lightbox__image { margin: auto; max-width: min(100%, 1100px); max-height: 100%; cursor: zoom-in; transform-origin: 0 0; transition: transform 220ms ease, opacity 160ms ease; will-change: transform; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .lightbox__frame .lightbox__image.is-moving { transition: none; }
 .lightbox.is-zoomed .lightbox__image { cursor: grab; }
 .lightbox.is-zoomed .lightbox__image.is-moving { cursor: grabbing; }
@@ -972,3 +972,13 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
   .user-account-header-btn { width: 39px; height: 39px; min-width: 39px; }
   .user-account-header-btn .user-account-avatar { width: 39px; height: 39px; }
 }
+@media (max-width: 520px) {
+  /* A solid circle looks bigger than an outlined one of the same size, so the
+     letter circle is drawn a little smaller to read as the same size as refresh */
+  .user-account-header-btn .user-account-avatar { width: 35px; height: 35px; font-size: 15px; }
+  .model-ref-btn { width: 39px; height: 39px; min-width: 39px; }
+}
+
+/* The wardrobe's name in an elegant Hebrew serif that suits the soft palette
+   (the body font has no Hebrew letters, so the title fell back to Arial) */
+.animated-title { font-family: "Frank Ruhl Libre Variable", "Frank Ruhl Libre", Georgia, serif; font-weight: 400; letter-spacing: 0; line-height: 1.15; }

@@ -14,6 +14,8 @@ export function ImageLightbox({ src, alt = "", images, startIndex = 0, onClose }
   const [index, setIndex] = useState(() => Math.min(Math.max(0, startIndex), Math.max(0, list.length - 1)));
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [moving, setMoving] = useState(false);
+  // The picture appears once it has loaded, so it never jumps while its size settles
+  const [loadedSrc, setLoadedSrc] = useState(null);
   const closeRef = useRef(null);
   const frameRef = useRef(null);
   const imageRef = useRef(null);
@@ -208,7 +210,8 @@ export function ImageLightbox({ src, alt = "", images, startIndex = 0, onClose }
           className={`lightbox__image${moving ? " is-moving" : ""}`}
           src={current.src}
           alt={current.alt || ""}
-          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
+          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, opacity: loadedSrc === current.src ? 1 : 0 }}
+          onLoad={() => setLoadedSrc(current.src)}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
