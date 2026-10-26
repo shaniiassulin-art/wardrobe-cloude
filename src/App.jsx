@@ -13,6 +13,7 @@ import { ArchiveView } from "./ArchiveView.jsx";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { InspirationModal } from "./InspirationModal.jsx";
 import { WishlistView } from "./WishlistView.jsx";
+import { EMPTY_LOOK_FILTERS, LookFilters, eventLabel, lookEvents, matchesLookFilters } from "./LookFilters.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
@@ -964,6 +965,13 @@ function LookViewerModal({ look, isPhoto = false, items = [], onClose, onDelete,
           </div>
         )}
 
+        {(lookEvents(look).length > 0 || (look.tags || []).length > 0) && (
+          <div className="look-viewer__meta">
+            {lookEvents(look).map((event) => <span key={event} className="look-viewer__event">{event}</span>)}
+            {(look.tags || []).map((tag) => <span key={tag} className="look-viewer__tag">#{tag}</span>)}
+          </div>
+        )}
+
         {stylingSummary(look.styling) && (
           <div style={{ marginBottom: "14px", fontSize: "12px", color: "var(--muted)" }}>
             <span style={{ fontWeight: "600", color: "var(--ink)" }}>סידור:</span> {stylingSummary(look.styling)}
@@ -1497,6 +1505,9 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   // A look made before the choice existed was laid on the body
   const [styling, setStyling] = useState(() => ({ ...DEFAULT_FLATLAY_STYLING, ...(initialStyling ? { layout: "body", ...initialStyling } : {}) }));
   const [lookName, setLookName] = useState(editLook?.name || "");
+  // The event (shown and filtered by) and the look's own tags
+  const [lookEvent, setLookEvent] = useState(() => [...new Set((editLook?.occasion || []).filter((value) => value !== "casual").map(eventLabel))].join(", "));
+  const [lookTagText, setLookTagText] = useState(() => (editLook?.tags || []).join(", "));
   // One category open at a time; all closed at first
   const [openCategory, setOpenCategory] = useState(null);
   // The picked piece whose length and fit are being edited here
@@ -1692,6 +1703,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             mode: outfitMode,
             styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             ...(generatedLook.uploaded ? { uploadedImage: generatedLook.image, image: undefined, uploaded: undefined, garmentIds: selectedIds } : {}),
+            occasion: lookEvent.split(",").map((v) => v.trim()).filter(Boolean),
+            tags: lookTagText.split(",").map((v) => v.trim().replace(/^#/, "")).filter(Boolean),
             ...fresh,
           }
         : {
@@ -1703,6 +1716,8 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             styling: outfitMode === "flatlay" ? (generatedLook?.usedStyling || activeStyling) : undefined,
             setting: "a warm, natural daylight setting with minimalist architecture",
             image: selectedItems[0]?.thumbnail || selectedItems[0]?.image || "",
+            occasion: lookEvent.split(",").map((v) => v.trim()).filter(Boolean),
+            tags: lookTagText.split(",").map((v) => v.trim().replace(/^#/, "")).filter(Boolean),
             ...fresh,
           };
 
@@ -2000,6 +2015,18 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
             )}
             <label className="lb-label" htmlFor="look-builder-name">שם הלוק <span>אופציונלי</span></label>
             <input id="look-builder-name" className="lb-input" type="text" value={lookName} onChange={(e) => setLookName(e.target.value)} placeholder="יינתן שם קצר אוטומטית, למשל: ערב עם חברות" />
+            <label className="lb-label" htmlFor="look-builder-event">אירוע <span>אופציונלי</span></label>
+            <input id="look-builder-event" className="lb-input" type="text" value={lookEvent} onChange={(e) => setLookEvent(e.target.value)} placeholder="למשל: עבודה, חתונה, ערב עם חברות" />
+            <div className="lb-suggest">
+              {["יומיומי", "עבודה", "ערב", "סוף שבוע", "אירוע", "חופשה", "ספורט"].map((event) => (
+                <button key={event} type="button" className={lookEvent.split(",").map((v) => v.trim()).includes(event) ? "is-on" : ""} onClick={() => setLookEvent((current) => {
+                  const list = current.split(",").map((v) => v.trim()).filter(Boolean);
+                  return (list.includes(event) ? list.filter((v) => v !== event) : [...list, event]).join(", ");
+                })}>{event}</button>
+              ))}
+            </div>
+            <label className="lb-label" htmlFor="look-builder-tags">תגיות <span>אופציונלי, מופרדות בפסיק</span></label>
+            <input id="look-builder-tags" className="lb-input" type="text" value={lookTagText} onChange={(e) => setLookTagText(e.target.value)} placeholder="למשל: קיץ, אהוב, לים" />
           </section>
         </div>
 
@@ -2180,6 +2207,9 @@ export function App() {
   const [selectedLook, setSelectedLook] = useState(null);
   const [archived, setArchived] = useState([]);
   const [wishlist, setWishlist] = useState([]);
+  const [lookFilters, setLookFilters] = useState(EMPTY_LOOK_FILTERS);
+  const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
+  const visibleLooks = useMemo(() => outfits.filter((look) => matchesLookFilters(look, lookFilters, itemsById)), [outfits, lookFilters, itemsById]);
   // Look photos opened full screen from the looks page: { look, index }
   const [lookZoom, setLookZoom] = useState(null);
   // Looks found to be photos of the user (for older looks that did not record it)
@@ -2988,29 +3018,22 @@ export function App() {
         {/* LOOKS VIEW */}
         {activeType === "looks" && !loading && (
           <>
+            {outfits.length > 0 && <LookFilters looks={outfits} items={items} filters={lookFilters} onChange={setLookFilters} />}
+            {outfits.length > 0 && !visibleLooks.length && (
+              <div className="empty-wardrobe-container">
+                <div className="empty-wardrobe-card">
+                  <h2 className="empty-wardrobe-title">אין לוקים שמתאימים לסינון</h2>
+                  <button type="button" className="secondary-button" onClick={() => setLookFilters(EMPTY_LOOK_FILTERS)}>ניקוי הסינון</button>
+                </div>
+              </div>
+            )}
             {outfits.length > 0 ? (
               <section className="gallery-grid looks-gallery" aria-label="לוקים">
-                {outfits.map((look) => (
+                {visibleLooks.map((look) => (
                   <div key={look.id} className={`gallery-item look-tile${(lookIsPhoto(look) ?? photoLooks[look.id]) ? " is-photo" : ""}`}>
                     <button type="button" className="gallery-item__main" onClick={() => setSelectedLook(look)} aria-label={`צפייה בלוק ${look.name}`}>
                       <LookTileImage look={look} onPhoto={(isPhoto) => setPhotoLooks((current) => current[look.id] === isPhoto ? current : { ...current, [look.id]: isPhoto })} />
                     </button>
-                    <p className="gallery-item__name look-tile__name" title={look.name}>{look.name}</p>
-                    {!!look.garments?.length && (
-                      <div className="look-tile__pieces">
-                        {look.garments.map((g, index) => (
-                          <button
-                            key={g.id}
-                            type="button"
-                            className="look-card__garment-thumb-btn"
-                            aria-label={`הגדלת ${g.name}`}
-                            onClick={() => setLookZoom({ look, index: index + 1 })}
-                          >
-                            <img className="look-tile__thumb" src={thumbUrl(fittedImage(g.thumbnail), 160)} onError={imageFallback(g.thumbnail)} loading="lazy" decoding="async" alt="" title={g.name} />
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
               </section>

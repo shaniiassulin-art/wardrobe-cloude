@@ -888,3 +888,30 @@ button, a, input, select, textarea, label { touch-action: manipulation; }
 .refresh-header-btn:hover { background: rgba(46, 42, 38, .07); }
 .refresh-header-btn:active { transform: scale(.94); }
 .refresh-header-btn:disabled { opacity: .7; cursor: default; }
+
+/* Looks: the picture alone, no name or pieces under it */
+.looks-gallery .look-tile { padding-bottom: 0; }
+/* Looks filters */
+.look-filters { margin: 4px 0 0; }
+.look-filters__empty { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.look-filters__items { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+.look-filters__items::-webkit-scrollbar { display: none; }
+.look-filters__item { flex: 0 0 82px; display: grid; justify-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.look-filters__thumb { display: grid; place-items: center; width: 74px; height: 74px; border-radius: 16px; background: #ece5db; box-shadow: inset 0 0 0 1px var(--line); }
+.look-filters__thumb img { width: 76%; height: 76%; object-fit: contain; }
+.look-filters__item.is-on .look-filters__thumb { box-shadow: inset 0 0 0 2px var(--ink); }
+.look-filters__name { max-width: 82px; font-size: 11px; line-height: 1.3; text-align: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.look-filters__item small { font-size: 10px; color: var(--muted); }
+/* Look window: event and tags */
+.look-viewer__meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.look-viewer__event, .look-viewer__tag { padding: 4px 11px; border-radius: 999px; font-size: 12px; }
+.look-viewer__event { background: var(--ink); color: var(--paper); }
+.look-viewer__tag { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+/* Look builder: quick event choices */
+.lb-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lb-suggest button { padding: 5px 11px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.lb-suggest button.is-on { background: var(--ink); color: var(--paper); box-shadow: none; }
+.look-filters { margin: 20px 52px 0; }
+@media (max-width: 1100px) { .look-filters { margin-inline: 32px; } }
+@media (max-width: 720px) { .look-filters { margin-inline: 20px; } }
+@media (max-width: 520px) { .look-filters { margin: 14px var(--gutter) 0; } }

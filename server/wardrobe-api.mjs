@@ -2435,7 +2435,11 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     const outfitRecord = {
       id: outfitId,
       name: (typeof outfitData.name === "string" && outfitData.name.trim()) || defaultLookName(selectedGarments, (await loadOutfits(wardrobeId)).filter((o) => o.id !== outfitId).map((o) => o.name)),
-      occasion: outfitData.occasion || ["casual"],
+      // The event (free text or one of the auto-look styles) and the look's own tags
+      occasion: (Array.isArray(outfitData.occasion) ? outfitData.occasion : outfitData.occasion ? [outfitData.occasion] : ["casual"])
+        .map((value) => String(value).trim().slice(0, 40)).filter(Boolean).slice(0, 4),
+      tags: (Array.isArray(outfitData.tags) ? outfitData.tags : typeof outfitData.tags === "string" ? outfitData.tags.split(",") : [])
+        .map((tag) => String(tag).trim().replace(/^#/, "").slice(0, 30)).filter(Boolean).slice(0, 12),
       garmentIds: outfitData.garmentIds,
       garments: selectedGarments.map((g) => ({
         id: g.id,
