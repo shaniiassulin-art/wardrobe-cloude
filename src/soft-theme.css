@@ -952,3 +952,7 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
 
 /* Wishlist window: the same space between the close button and the photo as elsewhere */
 .wish-modal .lb-body { padding-top: 18px; }
+/* Wishlist cards in a selection: the photo fills its card exactly like a
+   wardrobe piece's, with the same check in the same corner */
+.wishlist-item .wishlist-item__img img { transform: none; }
+.wishlist-item.is-checked .wishlist-item__img { box-shadow: none; outline: 2px solid var(--ink); outline-offset: -2px; }

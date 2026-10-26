@@ -3150,12 +3150,6 @@ export function App() {
             {checkedIds.length ? `נבחרו ${checkedIds.length}` : { looks: "בחרי לוקים", suitcases: "בחרי מזוודות", wishlist: "בחרי תמונות מה-Wishlist", archive: "בחרי פריטים מהארכיון" }[selectKind]}
           </span>
           <div className="selection-bar__actions">
-            <button type="button" className="secondary-button" onClick={() => {
-              const all = { looks: visibleLooks, suitcases, wishlist, archive: archived }[selectKind] || [];
-              setCheckedIds(checkedIds.length === all.length ? [] : all.map((entry) => entry.id));
-            }}>
-              {checkedIds.length && checkedIds.length === ({ looks: visibleLooks, suitcases, wishlist, archive: archived }[selectKind] || []).length ? "ביטול הבחירה" : "בחירת הכל"}
-            </button>
             {selectKind === "archive" && (
               <button type="button" className="secondary-button" disabled={!checkedIds.length} onClick={async () => { await restoreArchived(checkedIds); exitSelectMode(); }}>
                 <ArrowCounterClockwise size={15} aria-hidden="true" /> החזרה לארון
