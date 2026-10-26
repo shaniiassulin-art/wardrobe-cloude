@@ -967,3 +967,8 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
   .user-account-header-btn .user-account-avatar { width: 40px; height: 40px; font-size: 16px; }
   .user-account-header-btn .user-sync-indicator { bottom: 1px; inset-inline-end: 1px; box-shadow: 0 0 0 2px var(--paper); }
 }
+@media (max-width: 520px) {
+  /* The letter circle is exactly the size of the refresh button */
+  .user-account-header-btn { width: 39px; height: 39px; min-width: 39px; }
+  .user-account-header-btn .user-account-avatar { width: 39px; height: 39px; }
+}

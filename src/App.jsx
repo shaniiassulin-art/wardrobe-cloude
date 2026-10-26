@@ -2213,6 +2213,7 @@ export function App() {
   const visibleLooks = useMemo(() => outfits.filter((look) => matchesLookFilters(look, lookFilters, itemsById)), [outfits, lookFilters, itemsById]);
   // Look photos opened full screen from the looks page: { look, index }
   const [lookZoom, setLookZoom] = useState(null);
+  const [modelZoom, setModelZoom] = useState(false);
   // Looks found to be photos of the user (for older looks that did not record it)
   const [photoLooks, setPhotoLooks] = useState({});
   const [packingLookId, setPackingLookId] = useState(null);
@@ -2986,9 +2987,9 @@ export function App() {
                 type="button"
                 className={`model-ref-btn${hasModelRef ? " is-active" : ""}`}
                 disabled={uploadingModelRef}
-                onClick={() => modelFileInputRef.current?.click()}
-                title={hasModelRef ? "לחצי להחלפת תמונת מודל" : "העלאת תמונת מודל"}
-                aria-label={hasModelRef ? "החלפת תמונת מודל" : "העלאת תמונת מודל"}
+                onClick={() => (modelRefUrl ? setModelZoom(true) : modelFileInputRef.current?.click())}
+                title={hasModelRef ? "תמונת המודל (להחלפה: בפרופיל)" : "העלאת תמונת מודל"}
+                aria-label={hasModelRef ? "הגדלת תמונת המודל" : "העלאת תמונת מודל"}
               >
                 {uploadingModelRef ? (
                   <ArrowClockwise size={16} className="spin" />
@@ -3317,6 +3318,7 @@ export function App() {
         />
       )}
 
+      {modelZoom && modelRefUrl && <ImageLightbox src={modelRefUrl} alt="תמונת המודל שלי" onClose={() => setModelZoom(false)} />}
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
       <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || Boolean(selectKind) || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
