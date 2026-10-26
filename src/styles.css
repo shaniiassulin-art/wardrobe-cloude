@@ -7,7 +7,8 @@
   --muted: #66625d;
   --line: #cfc8bc;
   --accent: #6e302e;
-  font-family: "Instrument Sans Variable", "Helvetica Neue", Arial, sans-serif;
+  /* Latin letters in Instrument Sans, Hebrew letters in Frank Ruhl (see soft-theme.css) */
+  font-family: "Instrument Sans Variable", "Hebrew Serif", "Helvetica Neue", Arial, sans-serif;
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;

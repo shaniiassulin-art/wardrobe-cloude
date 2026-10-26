@@ -982,3 +982,39 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
 /* The wardrobe's name in an elegant Hebrew serif that suits the soft palette
    (the body font has no Hebrew letters, so the title fell back to Arial) */
 .animated-title { font-family: "Frank Ruhl Libre Variable", "Frank Ruhl Libre", Georgia, serif; font-weight: 400; letter-spacing: 0; line-height: 1.15; }
+
+/* ------------------------------------------------------------------
+   Hebrew everywhere in Frank Ruhl Libre. It is drawn a little larger
+   (its letters are small for their size) and only covers Hebrew, so
+   Latin letters and numbers stay in Instrument Sans.
+   ------------------------------------------------------------------ */
+@font-face {
+  font-family: "Hebrew Serif";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 900;
+  src: url("./fonts/frank-ruhl-libre-hebrew-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
+  size-adjust: 112%;
+}
+html, body, button, input, textarea, select { font-family: "Instrument Sans Variable", "Hebrew Serif", "Helvetica Neue", Arial, sans-serif; }
+body { font-weight: 400; }
+/* A serif reads best a touch lighter in body text and a touch stronger in labels */
+p, li, small, label, .lb-hint, .empty-wardrobe-text, .account-hint { font-weight: 400; }
+button, .lb-label, .gallery-item__name, .wardrobe-filters__group legend { font-weight: 500; }
+h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 600; letter-spacing: 0; }
+.animated-title { font-family: "Hebrew Serif", "Frank Ruhl Libre Variable", Georgia, serif; font-weight: 450; font-size: clamp(32px, 4.6vw, 50px); }
+/* Spaced-out capitals look odd in Hebrew, so small labels keep normal spacing */
+[style*="letter-spacing"] { letter-spacing: 0.02em !important; }
+.gallery-item__name { font-size: 13px; }
+.piece-count { font-size: 13px; }
+.category-nav button { font-size: 15px; }
+@media (max-width: 520px) {
+  .category-nav button { font-size: 14px; }
+  .gallery-item__name { font-size: 12.5px; }
+}
+/* Fine-tuning of the serif: a lighter touch reads better */
+button, .lb-label, .gallery-item__name, .wardrobe-filters__group legend { font-weight: 450; }
+h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
+.piece-count { letter-spacing: 0; }
+.lb-button.is-primary, .primary-button, .create-look-btn, .category-nav button.active { font-weight: 550; }
