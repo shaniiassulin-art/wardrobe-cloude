@@ -956,3 +956,8 @@ body:has(.builder-modal-overlay), body:has(.lightbox), body:has(.item-sheet), bo
    wardrobe piece's, with the same check in the same corner */
 .wishlist-item .wishlist-item__img img { transform: none; }
 .wishlist-item.is-checked .wishlist-item__img { box-shadow: none; outline: 2px solid var(--ink); outline-offset: -2px; }
+
+/* Photos of a piece on the user: always show the top of the photo (the head and
+   shoulders), in the wardrobe cards and in the item window */
+.gallery-item__main > .gallery-item__modeled { object-position: center top; }
+.item-sheet__modeled img { object-position: center top; }
