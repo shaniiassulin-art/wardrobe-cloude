@@ -1113,3 +1113,25 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .lb-tile--more.is-on .lb-tile__img { box-shadow: inset 0 0 0 1px var(--ink); background: transparent; }
 .lb-grid--others { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .lb-cat__note { margin: 0; padding: 0 14px 14px; font-size: 12.5px; color: var(--muted); }
+
+/* Merged shades show how many book colours they stand for */
+.combos__shade { width: 30px; height: 30px; display: grid; place-items: center; }
+.combos__shade span { font-size: 9.5px; font-weight: 600; line-height: 1; color: rgba(255, 255, 255, .95); letter-spacing: -.02em; direction: ltr; }
+.combos__shade span.is-dark { color: rgba(0, 0, 0, .62); }
+
+/* Scanning, explained before and after */
+.combos__scan-start { display: grid; gap: 8px; justify-items: start; }
+.combos__scan-start p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.combos__scanned { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.combos__scanned p { display: grid; gap: 2px; margin: 0; flex: 1; min-width: 0; }
+.combos__scanned strong { font-size: 13.5px; font-weight: 600; }
+.combos__scanned p span { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.combos__scanned .filter-chip { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.combos__scanned-x { flex: none; width: 30px; height: 30px; }
+
+/* The builder from a combination, laid out like the inspiration window */
+.lb-palette-cats { margin-top: 4px; }
+.lb-palette-cats .inspo-piece__head .lb-cat__tones { order: -1; }
+.lb-tone-name { display: flex; align-items: center; gap: 4px; direction: ltr; justify-content: center; }
+.lb-tone-name .inspo-dot { width: 9px; height: 9px; }
+.lb-palette-rest { margin: 18px 0 8px; font-size: 12.5px; color: var(--muted); }

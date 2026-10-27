@@ -3,7 +3,6 @@ import { Camera, MagicWand, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { CLOSE, deltaE, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
-import { fittedImage, imageFallback, thumbUrl } from "./image-files.js";
 
 const toHex = (r, g, b) => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
 
@@ -40,7 +39,7 @@ const SHADE_ROWS = COLOR_FAMILIES
 const PALETTES = WADA_PALETTES.map(([number, indexes]) => ({ number, colors: indexes.map((i) => COLORS[i]) }));
 
 // Every recommended combination from Sanzo Wada's "A Dictionary of Colour
-// Combinations", filtered by a colour or by a piece from the wardrobe, with the
+// Combinations", filtered by a colour of the book or a scanned garment, with the
 // wardrobe pieces that match each colour and a quick way to make a look of them
 export function ColorCombos({ items, onCreateLook }) {
   const [shadeId, setShadeId] = useState(null);
@@ -111,16 +110,20 @@ export function ColorCombos({ items, onCreateLook }) {
 
       <div className="combos__filters">
         <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
-        {!scan && (
-          <div className="combos__row">
+        {!scan && !scanned && (
+          <div className="combos__scan-start">
             <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()}>
               <Camera size={17} aria-hidden="true" /> סריקת בגד מהארון
             </button>
-            {scanned && (
-              <button type="button" className="filter-chip is-on" onClick={() => setScanned(null)}>
-                <span className="filter-chip__dot" style={{ background: scanned.hex }} />הצבע שנסרק<X size={11} aria-label="הסרה" />
-              </button>
-            )}
+            <p>צלמי בגד, געי בו בתמונה, ויופיעו רק השילובים מהספר שיש בהם צבע קרוב לצבע שלו.</p>
+          </div>
+        )}
+        {!scan && scanned && (
+          <div className="combos__scanned">
+            <span className="combos__scan-swatch" style={{ background: scanned.hex }} aria-hidden="true" />
+            <p><strong>שילובים לצבע שסרקת</strong><span>בכל שילוב, הצבע הקרוב לבגד מסומן בנקודה לבנה</span></p>
+            <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> סריקה אחרת</button>
+            <button type="button" className="lb-close combos__scanned-x" onClick={() => setScanned(null)} aria-label="ביטול הסריקה"><X size={14} /></button>
           </div>
         )}
         {scan && (
@@ -133,7 +136,7 @@ export function ColorCombos({ items, onCreateLook }) {
             <div className="combos__scan-actions">
               <span className="combos__scan-swatch" style={{ background: scan.hex }} aria-hidden="true" />
               <button type="button" className="combo__look" onClick={() => { setScanned({ hex: scan.hex, lab: hexToLab(scan.hex) }); setPieceId(null); setShadeId(null); setScan(null); }}>
-                <MagicWand size={13} aria-hidden="true" /> שילובים לצבע הזה
+                <MagicWand size={13} aria-hidden="true" /> הצגת שילובים לצבע הזה
               </button>
               <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}>תמונה אחרת</button>
               <button type="button" className="filter-chip" onClick={() => setScan(null)}>ביטול</button>
@@ -147,7 +150,9 @@ export function ColorCombos({ items, onCreateLook }) {
               <span className="combos__shade-label">{row.label}</span>
               <div className="combos__shade-list">
                 {row.shades.map((entry) => (
-                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setScanned(null); }} />
+                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.members.length > 1 ? `${entry.name} (${entry.members.length} גוונים קרובים)` : entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setScanned(null); }}>
+                    {entry.members.length > 1 && <span className={entry.lab[0] > 62 ? "is-dark" : ""}>+{entry.members.length - 1}</span>}
+                  </button>
                 ))}
               </div>
             </div>
@@ -158,18 +163,6 @@ export function ColorCombos({ items, onCreateLook }) {
             <button type="button" className="filter-chip is-on" onClick={() => setShadeId(null)}>
               <span className="filter-chip__dot" style={{ background: shade.hex }} />{shade.name}<X size={11} aria-label="הסרה" />
             </button>
-          </div>
-        )}
-        {pieces.length > 0 && (
-          <div className="combos__pieces" role="group" aria-label="שילובים לפריט מהארון">
-            {pieces.map(({ item }) => (
-              <button key={item.id} type="button" className={`look-filters__item${pieceId === item.id ? " is-on" : ""}`} aria-pressed={pieceId === item.id} onClick={() => setPieceId(pieceId === item.id ? null : item.id)}>
-                <span className="look-filters__thumb">
-                  <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 160)} onError={imageFallback(item.thumbnail || item.image)} alt="" loading="lazy" decoding="async" />
-                </span>
-                <span className="look-filters__name">{item.name}</span>
-              </button>
-            ))}
           </div>
         )}
         <div className="combos__row">
@@ -189,11 +182,13 @@ export function ColorCombos({ items, onCreateLook }) {
       <div className="combos__grid">
         {shown.map((palette) => {
           const owned = palette.matches.filter((list) => list.length).length;
+          // With a scanned colour, the colour of the combination closest to it
+          const scannedAt = scanned ? palette.colors.reduce((best, color, index) => (deltaE(scanned.lab, color.lab) < deltaE(scanned.lab, palette.colors[best].lab) ? index : best), 0) : -1;
           return (
             <article key={palette.number} className="combo">
               <div className="combo__swatches">
                 {palette.colors.map((color, index) => (
-                  <span key={index} className={`combo__swatch${shade && SHADE_OF.get(color) === shadeId ? " is-picked" : ""}`} style={{ background: color.hex }} title={color.name} />
+                  <span key={index} className={`combo__swatch${(shade && SHADE_OF.get(color) === shadeId) || index === scannedAt ? " is-picked" : ""}`} style={{ background: color.hex }} title={color.name} />
                 ))}
               </div>
               <div className="combo__foot">
