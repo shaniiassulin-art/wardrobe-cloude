@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, SlidersHorizontal } from "@phosphor-icons/react";
 import { ArrowClockwise, ArrowCounterClockwise, ArrowsLeftRight, CaretDown, Check, CheckSquare, Copy, FloppyDisk, MagicWand, PencilSimple, Plus, Suitcase, Trash, User, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
@@ -13,6 +13,8 @@ import { ArchiveView } from "./ArchiveView.jsx";
 import { ChatGptHelper } from "./ChatGptHelper.jsx";
 import { InspirationModal } from "./InspirationModal.jsx";
 import { WishlistView } from "./WishlistView.jsx";
+// Loaded only when the page is opened (it carries the book's palettes)
+const ColorCombos = lazy(() => import("./ColorCombos.jsx").then((module) => ({ default: module.ColorCombos })));
 import { EMPTY_LOOK_FILTERS, LookFilters, eventLabel, lookEvents, matchesLookFilters } from "./LookFilters.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
@@ -45,6 +47,7 @@ const TYPES = [
   { id: "shoes", label: "נעליים", singular: "נעליים" },
   { id: "accessories_up", label: "אקססוריז", singular: "אקססורי" },
   { id: "wishlist", label: "Wishlist" },
+  { id: "colors", label: "שילובי צבעים" },
   { id: "archive", label: "ארכיון" },
 ];
 
@@ -369,7 +372,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       <label className="field">
         <span>קטגוריה</span>
         <select value={draft.part} onChange={(event) => setDraft((current) => ({ ...current, part: event.target.value }))}>
-          {TYPES.filter((type) => !["all", "looks", "luggage", "archive", "wishlist"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+          {TYPES.filter((type) => !["all", "looks", "luggage", "archive", "wishlist", "colors"].includes(type.id)).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
         </select>
       </label>
 
@@ -2201,7 +2204,7 @@ export function App() {
   const [items, setItems] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [activeType, setActiveType] = useState("all");
-  const isWardrobeView = !["looks", "luggage", "archive", "wishlist"].includes(activeType);
+  const isWardrobeView = !["looks", "luggage", "archive", "wishlist", "colors"].includes(activeType);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedLook, setSelectedLook] = useState(null);
   const [archived, setArchived] = useState([]);
@@ -2931,6 +2934,8 @@ export function App() {
                 ? `${suitcases.length} ${suitcases.length === 1 ? "מזוודה" : "מזוודות"}`
                 : activeType === "archive"
                 ? `${archived.length} בארכיון`
+                : activeType === "colors"
+                ? "לפי ספר הצבעים היפני"
                 : activeType === "wishlist"
                 ? `${wishlist.length} ${wishlist.length === 1 ? "פריט" : "פריטים"} לקנות`
                 : `${items.length} ${items.length === 1 ? "פריט" : "פריטים"}`}
@@ -3098,6 +3103,11 @@ export function App() {
           />
         )}
 
+        {activeType === "colors" && (
+          <Suspense fallback={<p className="status">טוען שילובי צבעים...</p>}>
+            <ColorCombos items={items} onCreateLook={(ids) => openLookBuilder(ids, "flatlay")} />
+          </Suspense>
+        )}
         {activeType === "wishlist" && (
           <WishlistView items={wishlist} wardrobeId={activeWardrobeId} selecting={selectKind === "wishlist"} checkedIds={checkedIds} onToggleCheck={toggleChecked} onChange={(entry) => setWishlist((current) => current.some((other) => other.id === entry.id) ? current.map((other) => other.id === entry.id ? entry : other) : [entry, ...current])} onRemoved={(id) => setWishlist((current) => current.filter((other) => other.id !== id))} />
         )}
@@ -3319,7 +3329,7 @@ export function App() {
       {modelZoom && modelRefUrl && <ImageLightbox src={modelRefUrl} alt="תמונת המודל שלי" onClose={() => setModelZoom(false)} />}
       {lookZoom && <ImageLightbox images={lookImages(lookZoom.look, items)} startIndex={lookZoom.index} onClose={() => setLookZoom(null)} />}
 
-      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || Boolean(selectKind) || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow key={activeWardrobeId} hidden={activeType === "looks" || activeType === "archive" || activeType === "wishlist" || activeType === "colors" || Boolean(selectKind) || Boolean(selectedItem) || builderOpen || inspirationOpen || autoModalOpen || Boolean(selectedLook) || userModalOpen || Boolean(packingIds) || Boolean(packingLookId) || luggageFlatlayModalOpen} onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
     </div>
   );
 }
