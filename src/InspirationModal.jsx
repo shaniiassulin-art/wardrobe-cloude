@@ -1,3 +1,4 @@
+import { clashesWithLook } from "./look-rules.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, Check, Heart, ImageSquare, MagicWand, X } from "@phosphor-icons/react";
 import { fileToUploadDataUrl, fittedImage, imageFallback, thumbUrl } from "./image-files.js";
@@ -67,7 +68,13 @@ export function InspirationModal({ items, wardrobeId, onClose, onCreateLook, onW
       setResult(data);
       setWished({});
       // The best match of every piece is picked to start with
-      setSelected([...new Set(data.pieces.filter((piece) => piece.level === "match" || piece.level === "kind").map((piece) => piece.options[0]?.id).filter(Boolean))]);
+      // A dress is never picked together with a top, trousers or a skirt
+      const picks = [];
+      for (const id of new Set(data.pieces.filter((piece) => piece.level === "match" || piece.level === "kind").map((piece) => piece.options[0]?.id).filter(Boolean))) {
+        const item = byId.get(id);
+        if (item && !clashesWithLook(item, picks.map((other) => byId.get(other)).filter(Boolean))) picks.push(id);
+      }
+      setSelected(picks);
     } catch (err) {
       setError(err.message || "לא ניתן לנתח את התמונה כרגע");
     } finally {

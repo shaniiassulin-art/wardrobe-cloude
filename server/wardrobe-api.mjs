@@ -2463,6 +2463,21 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
     return outfitRecord;
   }
 
+  // A dress (or a one-piece) is worn on its own: never with a top, trousers or a skirt
+  const isDressPart = (part) => part === "dress" || part === "wholebody";
+  const isSeparatePart = (part) => part === "upperbody" || part === "lowerbody";
+  function clashesWithLook(garment, look) {
+    if (isDressPart(garment.part)) return look.some((g) => isSeparatePart(g.part) || isDressPart(g.part));
+    if (isSeparatePart(garment.part)) return look.some((g) => isDressPart(g.part));
+    return false;
+  }
+  // Keeps suggested pieces in order, leaving out any that clash with the look so far
+  function withoutLookClashes(suggested, look = []) {
+    const kept = [];
+    for (const garment of suggested) if (!clashesWithLook(garment, [...look, ...kept])) kept.push(garment);
+    return kept;
+  }
+
   async function autoGenerateOutfits({ count = 1, occasion = "everyday", season = "", settingDirection = "", notes = "", wardrobeId = "user-shani" } = {}) {
     const targetCount = Math.max(1, Math.min(6, Number(count) || 1));
     const records = await loadImported(wardrobeId);
@@ -2551,6 +2566,7 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
         }
       }
 
+      if (combo.some((g, index) => clashesWithLook(g, combo.slice(0, index)))) continue;
       const comboKey = combo.map((g) => g.id).sort().join(",");
       if (!existingCombos.has(comboKey) && !curatedCombos.some((c) => c.key === comboKey)) {
         combo.forEach((g) => markUsed(g.id));
@@ -2592,7 +2608,8 @@ export function createWardrobeApi({ store, env = {}, defer } = {}) {
   async function completeOutfitWithAI({ selectedGarmentIds = [], suggestNew = false, wardrobeId = "user-shani" }) {
     const records = await loadImported(wardrobeId);
     const selectedGarments = records.filter((r) => selectedGarmentIds.includes(r.id));
-    const availableGarments = records.filter((r) => !selectedGarmentIds.includes(r.id));
+    // A dress is never suggested with tops or bottoms, and the other way round
+    const availableGarments = records.filter((r) => !selectedGarmentIds.includes(r.id) && !clashesWithLook(r, selectedGarments));
 
     if (availableGarments.length === 0) {
       return {
@@ -2620,7 +2637,7 @@ ${availableGarments.map((g) => `- ID: ${g.id} | Name: ${g.name} | Category: ${g.
 
 STRICT INSTRUCTIONS:
 1. Select 1 to 3 complementary pieces from the AVAILABLE wardrobe list to create a cohesive, tasteful outfit.
-2. If a top is chosen and no bottom is chosen, prioritize finding a bottom (or vice versa). If a dress is chosen, do not add tops or bottoms, but consider outerwear, shoes, or accessories.
+2. If a top is chosen and no bottom is chosen, prioritize finding a bottom (or vice versa). If a dress is chosen, do not add tops or bottoms, but consider outerwear, shoes, or accessories. Never combine a dress with a top, trousers or a skirt.
 3. CRITICAL RULE: You must choose ONLY items that actually exist in the Available pieces list using their exact IDs. Never invent items or IDs.
 4. ${suggestNew ? "Provide 1-2 styling ideas for new items the user could add to their closet in the future." : "Do NOT suggest any items outside the wardrobe."}
 
@@ -2654,8 +2671,10 @@ Respond in strict JSON format:
           const content = completion.choices?.[0]?.message?.content;
           if (content) {
             const parsed = JSON.parse(content);
-            const validRecommendedIds = (parsed.recommendedIds || [])
-              .filter((id) => availableGarments.some((g) => g.id === id));
+            const validRecommendedIds = withoutLookClashes(
+              (parsed.recommendedIds || []).map((id) => availableGarments.find((g) => g.id === id)).filter(Boolean),
+              selectedGarments,
+            ).map((g) => g.id);
 
             if (validRecommendedIds.length > 0) {
               return {
