@@ -1030,3 +1030,22 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 @media (max-width: 420px) { .body-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 /* The wardrobe's name a little smaller */
 .animated-title { font-size: clamp(27px, 3.8vw, 42px); }
+
+/* ------------------------------------------------------------------
+   Room for the host's badge ("Powered by Netlify") that sits at the
+   bottom of the screen: every page ends with enough space, and every
+   bar or footer pinned to the bottom lifts its buttons above it.
+   ------------------------------------------------------------------ */
+:root { --host-badge-space: 72px; }
+.gallery-grid, .looks-gallery, .archive-view .gallery-grid, .wishlist-view .gallery-grid { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
+.luggage-view { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
+.empty-wardrobe-container { padding-bottom: calc(var(--host-badge-space) + 24px); }
+.selection-bar { bottom: calc(var(--host-badge-space) + max(8px, env(safe-area-inset-bottom))) !important; }
+.item-sheet__footer { padding-bottom: calc(var(--host-badge-space) + max(10px, env(safe-area-inset-bottom))) !important; }
+.lb-footer { padding-bottom: calc(var(--host-badge-space) + max(10px, env(safe-area-inset-bottom))) !important; }
+.wish-modal .lb-body, .look-builder .lb-body, .inspo .lb-body, .wish-add .lb-body { padding-bottom: 28px; }
+/* Centred windows (a look, the profile) end above the badge */
+.builder-modal-overlay:not(.look-builder-overlay) { padding-bottom: calc(var(--host-badge-space) + 8px); }
+.builder-modal-overlay:not(.look-builder-overlay) > .builder-modal { max-height: calc(100dvh - var(--host-badge-space) - 32px); }
+.import-tray { bottom: calc(var(--host-badge-space) + max(12px, env(safe-area-inset-bottom))) !important; }
+.lightbox__caption { bottom: calc(var(--host-badge-space) + 8px) !important; }
