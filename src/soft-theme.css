@@ -1087,3 +1087,29 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combos__scan-mark { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 4px 12px rgba(0, 0, 0, .25); pointer-events: none; }
 .combos__scan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .combos__scan-swatch { width: 34px; height: 34px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+
+/* Colour combinations: every shade of the book, by family */
+.combo__swatches { gap: 0; border-radius: 12px; overflow: hidden; }
+.combo__swatch { flex: 1 1 0; height: 104px; border-radius: 0; box-shadow: none; position: relative; }
+.combo__swatch.is-picked::after { content: ""; position: absolute; inset-inline: 0; bottom: 8px; margin-inline: auto; width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
+.combos__shades { display: grid; gap: 7px; }
+.combos__shade-row { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 8px; }
+.combos__shade-label { font-size: 12px; color: var(--muted); }
+.combos__shade-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.combos__shade { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .1); cursor: pointer; transition: transform 140ms ease, box-shadow 140ms ease; }
+.combos__shade:hover { transform: scale(1.08); }
+.combos__shade.is-on { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
+
+/* The look builder opened from a combination */
+.lb-palette { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.lb-palette__label { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.lb-palette__swatches { display: flex; flex: 1; height: 34px; border-radius: 10px; overflow: hidden; }
+.lb-palette__swatch { flex: 1; display: grid; place-items: center; color: #fff; }
+.lb-palette__swatch svg { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .55)); }
+.lb-cat__tones { display: inline-flex; gap: 3px; }
+.lb-cat__tones span { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+.lb-tile__tone { position: absolute; bottom: 7px; inset-inline-start: 7px; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, .9); }
+.lb-tile--more .lb-tile__img { font-size: 15px; color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--line); border: 1px dashed transparent; }
+.lb-tile--more.is-on .lb-tile__img { box-shadow: inset 0 0 0 1px var(--ink); background: transparent; }
+.lb-grid--others { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.lb-cat__note { margin: 0; padding: 0 14px 14px; font-size: 12.5px; color: var(--muted); }

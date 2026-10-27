@@ -17,6 +17,7 @@ import { WishlistView } from "./WishlistView.jsx";
 const ColorCombos = lazy(() => import("./ColorCombos.jsx").then((module) => ({ default: module.ColorCombos })));
 import { EMPTY_LOOK_FILTERS, LookFilters, eventLabel, lookEvents, matchesLookFilters } from "./LookFilters.jsx";
 import { fitForPart, lengthOptions } from "./fit-options.js";
+import { CLOSE, hexToLab, itemDistance } from "./color-match.js";
 import { revealChildren, revealWords, startSmoothScroll, tiltHandlers, watchOverlays } from "./motion.js";
 
 // Page heading whose words fade in from a soft blur
@@ -1499,7 +1500,10 @@ function StylingChoice({ label, value, options, onChange, disabled }) {
   );
 }
 
-function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, editLook = null, onClose, onCreated }) {
+// The look builder's category for a piece
+const categoryOf = (part) => (part === "dress" || part === "wholebody" ? "dress" : OUTER_PARTS.includes(part) ? "wholebody_up" : part);
+
+function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialItemIds = [], initialMode = "flatlay", initialNotes = "", initialStyling = null, editLook = null, palette = null, onClose, onCreated }) {
   const [outfitMode, setOutfitMode] = useState(initialMode || "flatlay");
   const [selectedIds, setSelectedIds] = useState(() => [...initialItemIds]);
   const [outfitNotes, setOutfitNotes] = useState(initialNotes || "");
@@ -1509,8 +1513,27 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
   // The event (shown and filtered by) and the look's own tags
   const [lookEvent, setLookEvent] = useState(() => [...new Set((editLook?.occasion || []).filter((value) => value !== "casual").map(eventLabel))].join(", "));
   const [lookTagText, setLookTagText] = useState(() => (editLook?.tags || []).join(", "));
-  // One category open at a time; all closed at first
-  const [openCategory, setOpenCategory] = useState(null);
+  // A combination from the colour book: its colours, and how close each piece is to one of them
+  const paletteColors = useMemo(() => (palette?.colors || []).map((color) => ({ ...color, lab: hexToLab(color.hex) })), [palette]);
+  const paletteMatch = useMemo(() => {
+    const map = new Map();
+    if (!paletteColors.length) return map;
+    for (const item of items) {
+      let best = null;
+      paletteColors.forEach((color, index) => {
+        const d = itemDistance(item, color.lab);
+        if (d <= CLOSE && (!best || d < best.d)) best = { d, index };
+      });
+      if (best) map.set(item.id, best);
+    }
+    return map;
+  }, [items, paletteColors]);
+  // Normally one category open at a time, all closed at first. From a colour
+  // combination, every category with pieces in its colours opens.
+  const [openCats, setOpenCats] = useState(() => (palette ? [...new Set(items.filter((item) => paletteMatch.has(item.id)).map((item) => categoryOf(item.part)))] : []));
+  const toggleCategory = (id) => setOpenCats((current) => (current.includes(id) ? current.filter((x) => x !== id) : palette ? [...current, id] : [id]));
+  // Categories where "אחר" shows the rest of the pieces too
+  const [showOthers, setShowOthers] = useState([]);
   // The picked piece whose length and fit are being edited here
   const [settingsId, setSettingsId] = useState(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -1860,6 +1883,17 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
               );
             })()}
 
+            {palette && (
+              <div className="lb-palette" aria-label={`שילוב ${palette.number} מספר הצבעים היפני`}>
+                <span className="lb-palette__label">שילוב #{palette.number}</span>
+                <div className="lb-palette__swatches">
+                  {paletteColors.map((color, index) => {
+                    const covered = selectedItems.some((item) => paletteMatch.get(item.id)?.index === index);
+                    return <span key={index} className={`lb-palette__swatch${covered ? " is-covered" : ""}`} style={{ background: color.hex }} title={color.name}>{covered && <Check size={12} weight="bold" />}</span>;
+                  })}
+                </div>
+              </div>
+            )}
             {selectedItems.length > 0 ? (
               <div className="lb-chips">
                 {selectedItems.map((item) => (
@@ -1881,30 +1915,54 @@ function CustomOutfitModal({ items, modelRefUrl = null, onUpdateItem, initialIte
               {categoryTabs.map((tab) => {
                 const pieces = items.filter((item) => inCategory(item, tab.id));
                 if (!pieces.length) return null;
-                const open = openCategory === tab.id;
+                const open = openCats.includes(tab.id);
                 const picked = pieces.filter((item) => selectedIds.includes(item.id)).length;
+                // From a combination: the pieces in its colours first, the rest under "אחר"
+                const inColors = palette ? pieces.filter((item) => paletteMatch.has(item.id)).sort((a, b) => paletteMatch.get(a.id).d - paletteMatch.get(b.id).d) : pieces;
+                const others = palette ? pieces.filter((item) => !paletteMatch.has(item.id)) : [];
+                const othersOpen = !inColors.length || showOthers.includes(tab.id);
+                const tile = (item) => {
+                  const isSelected = selectedIds.includes(item.id);
+                  const match = paletteMatch.get(item.id);
+                  return (
+                    <button key={item.id} type="button" className={`lb-tile${isSelected ? " is-on" : ""}`} aria-pressed={isSelected} onClick={() => toggleItem(item.id)}>
+                      <span className="lb-tile__img">
+                        <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
+                        <span className="lb-tile__check" aria-hidden="true">{isSelected && <Check size={12} weight="bold" />}</span>
+                        {match && <span className="lb-tile__tone" style={{ background: paletteColors[match.index].hex }} aria-hidden="true" />}
+                      </span>
+                      <span className="lb-tile__name">{item.name}</span>
+                    </button>
+                  );
+                };
                 return (
                   <div key={tab.id} className={`lb-cat${open ? " is-open" : ""}`}>
-                    <button type="button" className="lb-cat__head" aria-expanded={open} onClick={() => setOpenCategory(open ? null : tab.id)}>
+                    <button type="button" className="lb-cat__head" aria-expanded={open} onClick={() => toggleCategory(tab.id)}>
                       <span className="lb-cat__name">{tab.label}</span>
+                      {palette && inColors.length > 0 && <span className="lb-cat__tones" aria-label="יש פריטים בצבעי השילוב">{[...new Set(inColors.map((item) => paletteMatch.get(item.id).index))].sort().map((index) => <span key={index} style={{ background: paletteColors[index].hex }} />)}</span>}
                       {picked > 0 && <span className="lb-cat__picked">{picked === 1 ? "נבחר 1" : `נבחרו ${picked}`}</span>}
                       <span className="lb-cat__count">{pieces.length}</span>
                       <CaretDown size={14} className="lb-cat__caret" aria-hidden="true" />
                     </button>
-                    {open && (
+                    {open && palette && (
+                      <>
+                        {inColors.length > 0 ? (
+                          <div className="lb-grid">
+                            {inColors.map(tile)}
+                            {others.length > 0 && (
+                              <button type="button" className={`lb-tile lb-tile--more${othersOpen ? " is-on" : ""}`} aria-expanded={othersOpen} onClick={() => setShowOthers((current) => (current.includes(tab.id) ? current.filter((x) => x !== tab.id) : [...current, tab.id]))}>
+                                <span className="lb-tile__img"><span>{othersOpen ? "פחות" : "אחר"}</span></span>
+                                <span className="lb-tile__name">{othersOpen ? "רק בצבעי השילוב" : `עוד ${others.length} בקטגוריה`}</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : <p className="lb-cat__note">אין כאן פריטים בצבעי השילוב</p>}
+                        {othersOpen && others.length > 0 && <div className="lb-grid lb-grid--others">{others.map(tile)}</div>}
+                      </>
+                    )}
+                    {open && !palette && (
                       <div className="lb-grid">
-                        {pieces.map((item) => {
-                          const isSelected = selectedIds.includes(item.id);
-                          return (
-                            <button key={item.id} type="button" className={`lb-tile${isSelected ? " is-on" : ""}`} aria-pressed={isSelected} onClick={() => toggleItem(item.id)}>
-                              <span className="lb-tile__img">
-                                <img src={thumbUrl(fittedImage(item.thumbnail || item.image), 240)} onError={imageFallback(item.thumbnail || item.image)} loading="lazy" decoding="async" alt="" />
-                                <span className="lb-tile__check" aria-hidden="true">{isSelected && <Check size={12} weight="bold" />}</span>
-                              </span>
-                              <span className="lb-tile__name">{item.name}</span>
-                            </button>
-                          );
-                        })}
+                        {pieces.map(tile)}
                       </div>
                     )}
                   </div>
@@ -3105,7 +3163,7 @@ export function App() {
 
         {activeType === "colors" && (
           <Suspense fallback={<p className="status">טוען שילובי צבעים...</p>}>
-            <ColorCombos items={items} onCreateLook={(ids) => openLookBuilder(ids, "flatlay")} />
+            <ColorCombos items={items} onCreateLook={(palette) => openLookBuilder([], "flatlay", { palette })} />
           </Suspense>
         )}
         {activeType === "wishlist" && (
@@ -3279,6 +3337,7 @@ export function App() {
           initialNotes={builderInitialExtras.notes}
           initialStyling={builderInitialExtras.styling}
           editLook={builderInitialExtras.editLook || null}
+          palette={builderInitialExtras.palette || null}
           onClose={() => {
             setBuilderOpen(false);
             setBuilderInitialItems([]);
