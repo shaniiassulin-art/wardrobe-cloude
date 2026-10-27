@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Camera, MagicWand, X } from "@phosphor-icons/react";
+import { Camera, ImageSquare, MagicWand, Plus, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { CLOSE, deltaE, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
@@ -46,10 +46,14 @@ export function ColorCombos({ items, onCreateLook }) {
   const [pieceId, setPieceId] = useState(null);
   const [size, setSize] = useState(0);
   const [onlyMine, setOnlyMine] = useState(false);
-  // A garment photographed with the camera: its colour, picked by touching it
+  // A garment photo (camera or gallery): its colour, picked by touching it
   const [scan, setScan] = useState(null); // { photo, hex, x, y }
-  const [scanned, setScanned] = useState(null); // the colour used for filtering
+  // Colours sampled from one or more photos; combinations are found for them together
+  const [samples, setSamples] = useState([]); // [{ id, hex, lab }]
   const fileRef = useRef(null);
+  const galleryRef = useRef(null);
+  const addSample = (hex) => setSamples((current) => (current.some((sample) => sample.hex === hex) ? current : [...current, { id: `${hex}-${Date.now()}`, hex, lab: hexToLab(hex) }]));
+  const removeSample = (id) => setSamples((current) => current.filter((sample) => sample.id !== id));
   const canvasRef = useRef(null);
   const openPhoto = (file) => {
     if (!file) return;
@@ -89,17 +93,28 @@ export function ColorCombos({ items, onCreateLook }) {
     .filter((entry) => entry.d <= CLOSE)
     .sort((a, b) => a.d - b.d);
 
-  const shown = useMemo(() => PALETTES
+  const candidates = useMemo(() => PALETTES
     .filter((palette) => !size || palette.colors.length === size)
     .filter((palette) => shadeId === null || palette.colors.some((color) => SHADE_OF.get(color) === shadeId))
     .filter((palette) => !piece || palette.colors.some((color) => Math.min(deltaE(piece.lab, color.lab), deltaE(piece.lab2, color.lab)) <= CLOSE))
-    .filter((palette) => !scanned || palette.colors.some((color) => deltaE(scanned.lab, color.lab) <= CLOSE))
-    .map((palette) => ({ ...palette, matches: palette.colors.map(matchesFor) }))
+    .map((palette) => {
+      // The colour of the combination closest to each sampled colour, when close enough
+      const sampledAt = samples.map((sample) => {
+        let best = -1;
+        palette.colors.forEach((color, index) => { if (deltaE(sample.lab, color.lab) <= CLOSE && (best < 0 || deltaE(sample.lab, color.lab) < deltaE(sample.lab, palette.colors[best].lab))) best = index; });
+        return best;
+      });
+      return { ...palette, sampledAt, sampled: sampledAt.filter((index) => index >= 0).length, matches: palette.colors.map(matchesFor) };
+    })
     .filter((palette) => !onlyMine || palette.matches.filter((list) => list.length).length >= Math.min(2, palette.colors.length)),
-  [shadeId, piece, scanned, size, onlyMine, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
+  [shadeId, piece, samples, size, onlyMine, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
+  // With sampled colours: the combinations that have all of them, or if there are
+  // none, the ones that have the most of them
+  const bestSampled = samples.length ? Math.max(0, ...candidates.map((palette) => palette.sampled)) : 0;
+  const shown = samples.length ? candidates.filter((palette) => bestSampled > 0 && palette.sampled === bestSampled) : candidates;
 
   const shade = shadeId === null ? null : SHADES[shadeId];
-  const active = Boolean(shade || piece || scanned || size || onlyMine);
+  const active = Boolean(shade || piece || samples.length || size || onlyMine);
 
   return (
     <section className="combos" aria-label="שילובי צבעים">
@@ -110,38 +125,68 @@ export function ColorCombos({ items, onCreateLook }) {
 
       <div className="combos__filters">
         <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
-        {!scan && !scanned && (
+        <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
+        {!scan && !samples.length && (
           <div className="combos__scan-start">
-            <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()}>
-              <Camera size={17} aria-hidden="true" /> סריקת בגד מהארון
-            </button>
-            <p>צלמי בגד, געי בו בתמונה, ויופיעו רק השילובים מהספר שיש בהם צבע קרוב לצבע שלו.</p>
-          </div>
-        )}
-        {!scan && scanned && (
-          <div className="combos__scanned">
-            <span className="combos__scan-swatch" style={{ background: scanned.hex }} aria-hidden="true" />
-            <p><strong>שילובים לצבע שסרקת</strong><span>בכל שילוב, הצבע הקרוב לבגד מסומן בנקודה לבנה</span></p>
-            <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> סריקה אחרת</button>
-            <button type="button" className="lb-close combos__scanned-x" onClick={() => setScanned(null)} aria-label="ביטול הסריקה"><X size={14} /></button>
+            <div className="combos__row">
+              <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()}>
+                <Camera size={17} aria-hidden="true" /> צילום בגד
+              </button>
+              <button type="button" className="combos__scan-btn is-light" onClick={() => galleryRef.current?.click()}>
+                <ImageSquare size={17} aria-hidden="true" /> מהגלריה
+              </button>
+            </div>
+            <p>צלמי בגד או בחרי תמונה, געי בצבע כדי לדגום אותו. אפשר לדגום כמה צבעים מכמה תמונות, ויופיעו השילובים מהספר שיש בהם את כל הצבעים שדגמת.</p>
           </div>
         )}
         {scan && (
           <div className="combos__scan">
-            <p className="combos__scan-hint">געי בבגד בתמונה כדי לבחור את הצבע שלו</p>
+            <p className="combos__scan-hint">געי בצבע בתמונה, ואז "הוספת הצבע". אפשר לדגום כמה צבעים מאותה תמונה.</p>
             <div className="combos__scan-photo" onClick={pickAt} role="button" tabIndex={0} aria-label="בחירת הצבע בתמונה">
-              <img src={scan.photo} alt="הבגד שצולם" />
+              <img src={scan.photo} alt="התמונה לדגימה" />
               <span className="combos__scan-mark" style={{ left: `${scan.x * 100}%`, top: `${scan.y * 100}%`, background: scan.hex }} aria-hidden="true" />
             </div>
             <div className="combos__scan-actions">
               <span className="combos__scan-swatch" style={{ background: scan.hex }} aria-hidden="true" />
-              <button type="button" className="combo__look" onClick={() => { setScanned({ hex: scan.hex, lab: hexToLab(scan.hex) }); setPieceId(null); setShadeId(null); setScan(null); }}>
-                <MagicWand size={13} aria-hidden="true" /> הצגת שילובים לצבע הזה
+              <button type="button" className="combo__look" disabled={samples.some((sample) => sample.hex === scan.hex)} onClick={() => { addSample(scan.hex); setPieceId(null); setShadeId(null); }}>
+                <Plus size={13} aria-hidden="true" /> {samples.some((sample) => sample.hex === scan.hex) ? "נוסף" : "הוספת הצבע"}
               </button>
-              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}>תמונה אחרת</button>
-              <button type="button" className="filter-chip" onClick={() => setScan(null)}>ביטול</button>
+            </div>
+            {samples.length > 0 && (
+              <div className="combos__samples" aria-label="הצבעים שדגמת">
+                {samples.map((sample) => (
+                  <button key={sample.id} type="button" className="combos__sample" style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label="הסרת הצבע"><X size={11} weight="bold" /></button>
+                ))}
+              </div>
+            )}
+            <div className="combos__scan-actions">
+              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> צילום נוסף</button>
+              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> תמונה מהגלריה</button>
+              <button type="button" className="combos__scan-done" onClick={() => setScan(null)}>{samples.length ? `הצגת שילובים (${samples.length} ${samples.length === 1 ? "צבע" : "צבעים"})` : "ביטול"}</button>
             </div>
             <p className="combos__scan-note">כדאי לצלם באור יום, בלי פלאש. תאורה חמה או צל משנים את הגוון.</p>
+          </div>
+        )}
+        {!scan && samples.length > 0 && (
+          <div className="combos__scanned">
+            <div className="combos__scanned-top">
+              <p>
+                <strong>{samples.length === 1 ? "שילובים לצבע שדגמת" : `שילובים ל-${samples.length} הצבעים שדגמת`}</strong>
+                <span>
+                  {bestSampled === samples.length || samples.length === 1
+                    ? (samples.length === 1 ? "הצבע הקרוב אליו מסומן בכל שילוב בנקודה לבנה" : "בכל שילוב יש את כל הצבעים שדגמת, מסומנים בנקודה לבנה")
+                    : bestSampled > 0 ? `אין שילוב עם כל הצבעים. אלה השילובים עם ${bestSampled} מהם` : "אין בספר שילוב עם הצבעים האלה"}
+                </span>
+              </p>
+              <button type="button" className="lb-close combos__scanned-x" onClick={() => setSamples([])} aria-label="ניקוי הדגימות"><X size={14} /></button>
+            </div>
+            <div className="combos__samples">
+              {samples.map((sample) => (
+                <button key={sample.id} type="button" className="combos__sample" style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label="הסרת הצבע"><X size={11} weight="bold" /></button>
+              ))}
+              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> עוד צבע</button>
+              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> מהגלריה</button>
+            </div>
           </div>
         )}
         <div className="combos__shades" role="group" aria-label="סינון לפי צבע מהספר">
@@ -150,7 +195,7 @@ export function ColorCombos({ items, onCreateLook }) {
               <span className="combos__shade-label">{row.label}</span>
               <div className="combos__shade-list">
                 {row.shades.map((entry) => (
-                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.members.length > 1 ? `${entry.name} (${entry.members.length} גוונים קרובים)` : entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setScanned(null); }}>
+                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.members.length > 1 ? `${entry.name} (${entry.members.length} גוונים קרובים)` : entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setSamples([]); }}>
                     {entry.members.length > 1 && <span className={entry.lab[0] > 62 ? "is-dark" : ""}>+{entry.members.length - 1}</span>}
                   </button>
                 ))}
@@ -171,7 +216,7 @@ export function ColorCombos({ items, onCreateLook }) {
           ))}
           <button type="button" className={`filter-chip${onlyMine ? " is-on" : ""}`} aria-pressed={onlyMine} onClick={() => setOnlyMine((value) => !value)}>יש לי בארון</button>
           {active && (
-            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setScanned(null); setSize(0); setOnlyMine(false); }}>
+            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); setOnlyMine(false); }}>
               <X size={13} aria-hidden="true" /> ניקוי
             </button>
           )}
@@ -182,13 +227,12 @@ export function ColorCombos({ items, onCreateLook }) {
       <div className="combos__grid">
         {shown.map((palette) => {
           const owned = palette.matches.filter((list) => list.length).length;
-          // With a scanned colour, the colour of the combination closest to it
-          const scannedAt = scanned ? palette.colors.reduce((best, color, index) => (deltaE(scanned.lab, color.lab) < deltaE(scanned.lab, palette.colors[best].lab) ? index : best), 0) : -1;
+          const sampledColors = new Set(palette.sampledAt.filter((index) => index >= 0));
           return (
             <article key={palette.number} className="combo">
               <div className="combo__swatches">
                 {palette.colors.map((color, index) => (
-                  <span key={index} className={`combo__swatch${(shade && SHADE_OF.get(color) === shadeId) || index === scannedAt ? " is-picked" : ""}`} style={{ background: color.hex }} title={color.name} />
+                  <span key={index} className={`combo__swatch${(shade && SHADE_OF.get(color) === shadeId) || sampledColors.has(index) ? " is-picked" : ""}`} style={{ background: color.hex }} title={color.name} />
                 ))}
               </div>
               <div className="combo__foot">
