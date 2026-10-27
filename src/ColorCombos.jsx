@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { MagicWand, X } from "@phosphor-icons/react";
+import { useMemo, useRef, useState } from "react";
+import { Camera, MagicWand, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { WADA_COLORS, WADA_PALETTES } from "./data/wada.js";
 import { fittedImage, imageFallback, thumbUrl } from "./image-files.js";
@@ -21,6 +21,22 @@ const deltaE = (a, b) => (a && b ? Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b
 // A wardrobe colour counts as "this colour of the combination" within this distance
 const CLOSE = 22;
 
+const toHex = (r, g, b) => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
+
+// The colour of a spot on a photo: the median of a small patch, so a thread,
+// a shadow or a highlight does not change the result
+function sampleColor(canvas, x, y, radius) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const left = Math.max(0, Math.round(x - radius));
+  const top = Math.max(0, Math.round(y - radius));
+  const size = Math.max(1, Math.round(radius * 2));
+  const { data } = context.getImageData(left, top, Math.min(size, canvas.width - left), Math.min(size, canvas.height - top));
+  const channels = [[], [], []];
+  for (let i = 0; i < data.length; i += 4) for (let c = 0; c < 3; c++) channels[c].push(data[i + c]);
+  const median = (list) => { const sorted = list.sort((a, b) => a - b); return sorted[Math.floor(sorted.length / 2)] || 0; };
+  return toHex(median(channels[0]), median(channels[1]), median(channels[2]));
+}
+
 const COLORS = WADA_COLORS.map(([name, hex]) => ({ name, hex, lab: hexToLab(hex), family: colorFamily(hex) }));
 const PALETTES = WADA_PALETTES.map(([number, indexes]) => ({ number, colors: indexes.map((i) => COLORS[i]) }));
 
@@ -32,6 +48,38 @@ export function ColorCombos({ items, onCreateLook }) {
   const [pieceId, setPieceId] = useState(null);
   const [size, setSize] = useState(0);
   const [onlyMine, setOnlyMine] = useState(false);
+  // A garment photographed with the camera: its colour, picked by touching it
+  const [scan, setScan] = useState(null); // { photo, hex, x, y }
+  const [scanned, setScanned] = useState(null); // the colour used for filtering
+  const fileRef = useRef(null);
+  const canvasRef = useRef(null);
+  const openPhoto = (file) => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, 900 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(image.naturalWidth * scale);
+      canvas.height = Math.round(image.naturalHeight * scale);
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvasRef.current = canvas;
+      // Starts from the middle of the photo, where the garment usually is
+      const x = canvas.width / 2;
+      const y = canvas.height / 2;
+      setScan({ photo: canvas.toDataURL("image/jpeg", 0.85), hex: sampleColor(canvas, x, y, Math.min(canvas.width, canvas.height) * 0.08), x: 0.5, y: 0.5 });
+      URL.revokeObjectURL(url);
+    };
+    image.src = url;
+  };
+  const pickAt = (event) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !scan) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const fx = (event.clientX - box.left) / box.width;
+    const fy = (event.clientY - box.top) / box.height;
+    setScan({ ...scan, x: fx, y: fy, hex: sampleColor(canvas, fx * canvas.width, fy * canvas.height, Math.min(canvas.width, canvas.height) * 0.03) });
+  };
   const pieces = useMemo(() => items
     .map((item) => ({ item, lab: hexToLab(item.color), lab2: hexToLab(item.secondaryColor) }))
     .filter((entry) => entry.lab), [items]);
@@ -47,12 +95,13 @@ export function ColorCombos({ items, onCreateLook }) {
     .filter((palette) => !size || palette.colors.length === size)
     .filter((palette) => !family || palette.colors.some((color) => color.family === family))
     .filter((palette) => !piece || palette.colors.some((color) => Math.min(deltaE(piece.lab, color.lab), deltaE(piece.lab2, color.lab)) <= CLOSE))
+    .filter((palette) => !scanned || palette.colors.some((color) => deltaE(scanned.lab, color.lab) <= CLOSE))
     .map((palette) => ({ ...palette, matches: palette.colors.map(matchesFor) }))
     .filter((palette) => !onlyMine || palette.matches.filter((list) => list.length).length >= Math.min(2, palette.colors.length)),
-  [family, piece, size, onlyMine, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
+  [family, piece, scanned, size, onlyMine, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const familiesInBook = COLOR_FAMILIES.filter((entry) => COLORS.some((color) => color.family === entry.id));
-  const active = Boolean(family || piece || size || onlyMine);
+  const active = Boolean(family || piece || scanned || size || onlyMine);
 
   return (
     <section className="combos" aria-label="שילובי צבעים">
@@ -62,6 +111,37 @@ export function ColorCombos({ items, onCreateLook }) {
       </div>
 
       <div className="combos__filters">
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
+        {!scan && (
+          <div className="combos__row">
+            <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()}>
+              <Camera size={17} aria-hidden="true" /> סריקת בגד מהארון
+            </button>
+            {scanned && (
+              <button type="button" className="filter-chip is-on" onClick={() => setScanned(null)}>
+                <span className="filter-chip__dot" style={{ background: scanned.hex }} />הצבע שנסרק<X size={11} aria-label="הסרה" />
+              </button>
+            )}
+          </div>
+        )}
+        {scan && (
+          <div className="combos__scan">
+            <p className="combos__scan-hint">געי בבגד בתמונה כדי לבחור את הצבע שלו</p>
+            <div className="combos__scan-photo" onClick={pickAt} role="button" tabIndex={0} aria-label="בחירת הצבע בתמונה">
+              <img src={scan.photo} alt="הבגד שצולם" />
+              <span className="combos__scan-mark" style={{ left: `${scan.x * 100}%`, top: `${scan.y * 100}%`, background: scan.hex }} aria-hidden="true" />
+            </div>
+            <div className="combos__scan-actions">
+              <span className="combos__scan-swatch" style={{ background: scan.hex }} aria-hidden="true" />
+              <button type="button" className="combo__look" onClick={() => { setScanned({ hex: scan.hex, lab: hexToLab(scan.hex) }); setPieceId(null); setFamily(null); setScan(null); }}>
+                <MagicWand size={13} aria-hidden="true" /> שילובים לצבע הזה
+              </button>
+              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}>תמונה אחרת</button>
+              <button type="button" className="filter-chip" onClick={() => setScan(null)}>ביטול</button>
+            </div>
+            <p className="combos__scan-note">כדאי לצלם באור יום, בלי פלאש. תאורה חמה או צל משנים את הגוון.</p>
+          </div>
+        )}
         <div className="combos__row" role="group" aria-label="סינון לפי צבע">
           {familiesInBook.map((entry) => (
             <button key={entry.id} type="button" className={`filter-chip${family === entry.id ? " is-on" : ""}`} aria-pressed={family === entry.id} onClick={() => setFamily(family === entry.id ? null : entry.id)}>
@@ -87,7 +167,7 @@ export function ColorCombos({ items, onCreateLook }) {
           ))}
           <button type="button" className={`filter-chip${onlyMine ? " is-on" : ""}`} aria-pressed={onlyMine} onClick={() => setOnlyMine((value) => !value)}>יש לי בארון</button>
           {active && (
-            <button type="button" className="wardrobe-filters__clear" onClick={() => { setFamily(null); setPieceId(null); setSize(0); setOnlyMine(false); }}>
+            <button type="button" className="wardrobe-filters__clear" onClick={() => { setFamily(null); setPieceId(null); setScanned(null); setSize(0); setOnlyMine(false); }}>
               <X size={13} aria-hidden="true" /> ניקוי
             </button>
           )}
