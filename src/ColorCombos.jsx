@@ -120,7 +120,7 @@ export function ColorCombos({ items, onCreateLook }) {
     <section className="combos" aria-label="שילובי צבעים">
       <div className="combos__intro">
         <h2>שילובי צבעים</h2>
-        <p>348 השילובים של "מילון שילובי הצבעים" מאת סאנזו ואדה, יפן, 1933, הספר שמעצבי אופנה חוזרים אליו עד היום. "לוק מהשילוב" פותח הרכבת לוק עם הבגדים שלך בגוונים של השילוב.</p>
+        <p>348 שילובים מספר הצבעים היפני של סאנזו ואדה. דגמי צבעים מתמונות של בגדים כדי למצוא שילובים, ו"לוק מהשילוב" יציע לך בגדים בצבעים שלו.</p>
       </div>
 
       <div className="combos__filters">
@@ -136,7 +136,6 @@ export function ColorCombos({ items, onCreateLook }) {
                 <ImageSquare size={17} aria-hidden="true" /> מהגלריה
               </button>
             </div>
-            <p>צלמי בגד או בחרי תמונה, געי בצבע כדי לדגום אותו. אפשר לדגום כמה צבעים מכמה תמונות, ויופיעו השילובים מהספר שיש בהם את כל הצבעים שדגמת.</p>
           </div>
         )}
         {scan && (
