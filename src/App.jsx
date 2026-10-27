@@ -39,6 +39,7 @@ const ACTIVE_WARDROBE_KEY = "active_wardrobe_id";
 const TYPES = [
   { id: "all", label: "הכל" },
   { id: "looks", label: "לוקים", singular: "לוק" },
+  { id: "colors", label: "שילובי צבעים" },
   { id: "luggage", label: "מזוודות", singular: "פריט מזוודה" },
   { id: "upperbody", label: "חולצות", singular: "חולצה" },
   { id: "lowerbody", label: "מכנסיים", singular: "מכנסיים" },
@@ -47,7 +48,6 @@ const TYPES = [
   { id: "shoes", label: "נעליים", singular: "נעליים" },
   { id: "accessories_up", label: "אקססוריז", singular: "אקססורי" },
   { id: "wishlist", label: "Wishlist" },
-  { id: "colors", label: "שילובי צבעים" },
   { id: "archive", label: "ארכיון" },
 ];
 

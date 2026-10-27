@@ -1047,7 +1047,7 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 /* Centred windows (a look, the profile) end above the badge */
 .builder-modal-overlay:not(.look-builder-overlay) { padding-bottom: calc(var(--host-badge-space) + 8px); }
 .builder-modal-overlay:not(.look-builder-overlay) > .builder-modal { max-height: calc(100dvh - var(--host-badge-space) - 32px); }
-.import-tray { bottom: calc(var(--host-badge-space) + max(12px, env(safe-area-inset-bottom))) !important; }
+/* The add-clothes button stays in the bottom-left corner (the badge is on the right) */
 .lightbox__caption { bottom: calc(var(--host-badge-space) + 8px) !important; }
 
 /* Colour combinations (Sanzo Wada) */
