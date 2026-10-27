@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Camera, ImageSquare, MagicWand, Plus, X } from "@phosphor-icons/react";
+import { Camera, CaretDown, ImageSquare, MagicWand, Plus, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { CLOSE, deltaE, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
@@ -43,6 +43,7 @@ const PALETTES = WADA_PALETTES.map(([number, indexes]) => ({ number, colors: ind
 // wardrobe pieces that match each colour and a quick way to make a look of them
 export function ColorCombos({ items, onCreateLook }) {
   const [shadeId, setShadeId] = useState(null);
+  const [shadesOpen, setShadesOpen] = useState(false);
   const [pieceId, setPieceId] = useState(null);
   const [size, setSize] = useState(0);
   const [onlyMine, setOnlyMine] = useState(false);
@@ -188,27 +189,25 @@ export function ColorCombos({ items, onCreateLook }) {
             </div>
           </div>
         )}
-        <div className="combos__shades" role="group" aria-label="סינון לפי צבע מהספר">
+        <button type="button" className={`wardrobe-filters__toggle combos__shades-toggle${shade ? " is-active" : ""}`} aria-expanded={shadesOpen} onClick={() => setShadesOpen((value) => !value)}>
+          {shade ? <span className="filter-chip__dot" style={{ background: shade.hex }} aria-hidden="true" /> : <span className="combos__shades-dots" aria-hidden="true">{["#c0392b", "#f1c40f", "#3e8e41", "#2f5d9c"].map((hex) => <span key={hex} style={{ background: hex }} />)}</span>}
+          <span>{shade ? shade.name : "סינון לפי צבע"}</span>
+          <CaretDown size={13} className="combos__shades-caret" aria-hidden="true" />
+        </button>
+        {shadesOpen && <div className="combos__shades" role="group" aria-label="סינון לפי צבע מהספר">
           {SHADE_ROWS.map((row) => (
             <div key={row.id} className="combos__shade-row">
               <span className="combos__shade-label">{row.label}</span>
               <div className="combos__shade-list">
                 {row.shades.map((entry) => (
-                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.members.length > 1 ? `${entry.name} (${entry.members.length} גוונים קרובים)` : entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setSamples([]); }}>
+                  <button key={entry.id} type="button" className={`combos__shade${shadeId === entry.id ? " is-on" : ""}`} style={{ background: entry.hex }} title={entry.name} aria-label={entry.members.length > 1 ? `${entry.name} (${entry.members.length} גוונים קרובים)` : entry.name} aria-pressed={shadeId === entry.id} onClick={() => { setShadeId(shadeId === entry.id ? null : entry.id); setPieceId(null); setSamples([]); setShadesOpen(false); }}>
                     {entry.members.length > 1 && <span className={entry.lab[0] > 62 ? "is-dark" : ""}>+{entry.members.length - 1}</span>}
                   </button>
                 ))}
               </div>
             </div>
           ))}
-        </div>
-        {shade && (
-          <div className="combos__row">
-            <button type="button" className="filter-chip is-on" onClick={() => setShadeId(null)}>
-              <span className="filter-chip__dot" style={{ background: shade.hex }} />{shade.name}<X size={11} aria-label="הסרה" />
-            </button>
-          </div>
-        )}
+        </div>}
         <div className="combos__row">
           {[[0, "הכל"], [2, "2 צבעים"], [3, "3 צבעים"], [4, "4 צבעים"]].map(([value, label]) => (
             <button key={value} type="button" className={`filter-chip${size === value ? " is-on" : ""}`} aria-pressed={size === value} onClick={() => setSize(value)}>{label}</button>

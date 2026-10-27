@@ -1145,3 +1145,11 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combos__scanned { display: grid; gap: 10px; }
 .combos__scanned-top { display: flex; align-items: flex-start; gap: 10px; }
 .combo__look:disabled { opacity: .55; cursor: default; }
+
+/* The book's colours sit behind a collapsed button */
+.combos__shades-toggle { justify-self: start; display: inline-flex; align-items: center; gap: 7px; }
+.combos__shades-toggle[aria-expanded="true"] .combos__shades-caret { transform: rotate(180deg); }
+.combos__shades-caret { transition: transform 160ms ease; }
+.combos__shades-dots { display: inline-flex; }
+.combos__shades-dots span { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--surface); }
+.combos__shades-dots span + span { margin-inline-start: -4px; }
