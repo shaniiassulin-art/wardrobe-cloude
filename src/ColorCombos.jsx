@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Camera, MagicWand, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
-import { WADA_COLORS, WADA_PALETTES } from "./data/wada.js";
+import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
 import { fittedImage, imageFallback, thumbUrl } from "./image-files.js";
 
 // Perceptual colour distance (CIE Lab, ΔE76), so "close to my shirt" means what the eye sees
