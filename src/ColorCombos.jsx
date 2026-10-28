@@ -267,6 +267,7 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
           const sampledColors = new Set(palette.sampledAt.filter((index) => index >= 0));
           return (
             <article key={palette.number} className="combo">
+              <HeartButton on={favorites.includes(palette.number)} onClick={() => toggleFavorite(palette.number)} className="is-over" />
               <div className="combo__swatches">
                 {palette.colors.map((color, index) => (
                   <span key={index} className={`combo__swatch${(shade && SHADE_OF.get(color) === shadeId) || sampledColors.has(index) ? " is-picked" : ""}`} style={{ background: color.hex }} title={color.name} />
@@ -274,7 +275,6 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
               </div>
               <div className="combo__foot">
                 <span className="combo__number">#{palette.number}</span>
-                <HeartButton on={favorites.includes(palette.number)} onClick={() => toggleFavorite(palette.number)} />
                 {owned > 0 && (
                   <button type="button" className="combo__look" onClick={() => onCreateLook({ number: palette.number, colors: palette.colors.map((color) => ({ hex: color.hex, name: color.name })) })}>
                     <MagicWand size={13} aria-hidden="true" /> לוק מהשילוב

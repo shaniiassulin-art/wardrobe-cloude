@@ -1166,3 +1166,11 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combos__fav-chip.is-on svg { color: #e8828a; }
 .daily-combo__meta { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
 .daily-combo__meta .daily-combo__number { margin: 0; }
+.combo__look { white-space: nowrap; }
+.combo__foot { gap: 4px; }
+@media (max-width: 420px) { .combo__look { padding-inline: 8px; } .combo__heart { width: 26px; } }
+/* The heart sits on the colours, in the corner */
+.combo { position: relative; }
+.combo__heart.is-over { position: absolute; z-index: 1; top: 18px; inset-inline-start: 18px; width: 32px; height: 32px; background: rgba(255, 255, 255, .88); color: #6f6760; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+.combo__heart.is-over.is-on { color: #c2414b; }
+@media (max-width: 420px) { .combo__heart.is-over { top: 14px; inset-inline-start: 14px; width: 30px; height: 30px; } }
