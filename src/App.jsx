@@ -3175,7 +3175,7 @@ export function App() {
 
         {activeType === "colors" && (
           <Suspense fallback={<p className="status">טוען שילובי צבעים...</p>}>
-            <ColorCombos items={items} onCreateLook={(palette) => openLookBuilder([], "flatlay", { palette })} />
+            <ColorCombos items={items} wardrobeId={activeWardrobeId} onCreateLook={(palette) => openLookBuilder([], "flatlay", { palette })} />
           </Suspense>
         )}
         {activeType === "wishlist" && (

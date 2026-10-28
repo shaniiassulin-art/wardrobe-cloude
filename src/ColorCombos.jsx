@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { ArrowsClockwise, Camera, CaretDown, ImageSquare, MagicWand, Plus, Sparkle, X } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowsClockwise, Camera, CaretDown, Heart, ImageSquare, MagicWand, Plus, Sparkle, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { CLOSE, deltaE, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
@@ -41,7 +41,41 @@ const PALETTES = WADA_PALETTES.map(([number, indexes]) => ({ number, colors: ind
 // Every recommended combination from Sanzo Wada's "A Dictionary of Colour
 // Combinations", filtered by a colour of the book or a scanned garment, with the
 // wardrobe pieces that match each colour and a quick way to make a look of them
-export function ColorCombos({ items, onCreateLook }) {
+// Favourite combinations, kept on the server with the profile (so on every device)
+function useComboFavorites(wardrobeId) {
+  const [favorites, setFavorites] = useState([]);
+  const latest = useRef([]);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/import/combo-favorites", { headers: { "x-wardrobe-id": wardrobeId } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (alive && Array.isArray(data?.favorites)) { latest.current = data.favorites; setFavorites(data.favorites); } })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [wardrobeId]);
+  const toggle = (number) => {
+    const before = latest.current;
+    const next = before.includes(number) ? before.filter((n) => n !== number) : [...before, number];
+    latest.current = next;
+    setFavorites(next);
+    fetch("/api/import/combo-favorites", { method: "PUT", headers: { "Content-Type": "application/json", "x-wardrobe-id": wardrobeId }, body: JSON.stringify({ favorites: next }) })
+      .then((res) => { if (!res.ok) throw new Error(); })
+      .catch(() => { latest.current = before; setFavorites(before); });
+  };
+  return [favorites, toggle];
+}
+
+function HeartButton({ on, onClick, className = "" }) {
+  return (
+    <button type="button" className={`combo__heart${on ? " is-on" : ""} ${className}`} aria-pressed={on} aria-label={on ? "הסרה מהמועדפים" : "הוספה למועדפים"} onClick={onClick}>
+      <Heart size={17} weight={on ? "fill" : "regular"} />
+    </button>
+  );
+}
+
+export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) {
+  const [favorites, toggleFavorite] = useComboFavorites(wardrobeId);
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [shadeId, setShadeId] = useState(null);
   const [shadesOpen, setShadesOpen] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
@@ -95,6 +129,7 @@ export function ColorCombos({ items, onCreateLook }) {
     .sort((a, b) => a.d - b.d);
 
   const candidates = useMemo(() => PALETTES
+    .filter((palette) => !onlyFavorites || favorites.includes(palette.number))
     .filter((palette) => !size || palette.colors.length === size)
     .filter((palette) => shadeId === null || palette.colors.some((color) => SHADE_OF.get(color) === shadeId))
     .filter((palette) => !piece || palette.colors.some((color) => Math.min(deltaE(piece.lab, color.lab), deltaE(piece.lab2, color.lab)) <= CLOSE))
@@ -106,15 +141,15 @@ export function ColorCombos({ items, onCreateLook }) {
         return best;
       });
       return { ...palette, sampledAt, sampled: sampledAt.filter((index) => index >= 0).length, matches: palette.colors.map(matchesFor) };
-    })
-  [shadeId, piece, samples, size, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
+    }),
+  [shadeId, piece, samples, size, pieces, onlyFavorites, favorites]); // eslint-disable-line react-hooks/exhaustive-deps
   // With sampled colours: the combinations that have all of them, or if there are
   // none, the ones that have the most of them
   const bestSampled = samples.length ? Math.max(0, ...candidates.map((palette) => palette.sampled)) : 0;
   const shown = samples.length ? candidates.filter((palette) => bestSampled > 0 && palette.sampled === bestSampled) : candidates;
 
   const shade = shadeId === null ? null : SHADES[shadeId];
-  const active = Boolean(shade || piece || samples.length || size);
+  const active = Boolean(shade || piece || samples.length || size || onlyFavorites);
 
   return (
     <section className="combos" aria-label="שילובי צבעים">
@@ -214,8 +249,11 @@ export function ColorCombos({ items, onCreateLook }) {
           {[[0, "הכל"], [2, "2 צבעים"], [3, "3 צבעים"], [4, "4 צבעים"]].map(([value, label]) => (
             <button key={value} type="button" className={`filter-chip${size === value ? " is-on" : ""}`} aria-pressed={size === value} onClick={() => setSize(value)}>{label}</button>
           ))}
+          <button type="button" className={`filter-chip combos__fav-chip${onlyFavorites ? " is-on" : ""}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
+            <Heart size={13} weight={onlyFavorites ? "fill" : "regular"} aria-hidden="true" /> מועדפים{favorites.length > 0 && <small>{favorites.length}</small>}
+          </button>
           {active && (
-            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); }}>
+            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); setOnlyFavorites(false); }}>
               <X size={13} aria-hidden="true" /> ניקוי
             </button>
           )}
@@ -236,6 +274,7 @@ export function ColorCombos({ items, onCreateLook }) {
               </div>
               <div className="combo__foot">
                 <span className="combo__number">#{palette.number}</span>
+                <HeartButton on={favorites.includes(palette.number)} onClick={() => toggleFavorite(palette.number)} />
                 {owned > 0 && (
                   <button type="button" className="combo__look" onClick={() => onCreateLook({ number: palette.number, colors: palette.colors.map((color) => ({ hex: color.hex, name: color.name })) })}>
                     <MagicWand size={13} aria-hidden="true" /> לוק מהשילוב
@@ -246,8 +285,8 @@ export function ColorCombos({ items, onCreateLook }) {
           );
         })}
       </div>
-      {!shown.length && <p className="look-filters__empty combos__none">אין שילובים שמתאימים לסינון.</p>}
-      {dailyOpen && <DailyCombo canLook={(palette) => palette.colors.some((color) => matchesFor(color).length > 0)} onClose={() => setDailyOpen(false)} onCreateLook={(palette) => { setDailyOpen(false); onCreateLook(palette); }} />}
+      {!shown.length && <p className="look-filters__empty combos__none">{onlyFavorites && !favorites.length ? "עוד אין שילובים מועדפים. אפשר לסמן שילוב בלב." : "אין שילובים שמתאימים לסינון."}</p>}
+      {dailyOpen && <DailyCombo favorites={favorites} onToggleFavorite={toggleFavorite} canLook={(palette) => palette.colors.some((color) => matchesFor(color).length > 0)} onClose={() => setDailyOpen(false)} onCreateLook={(palette) => { setDailyOpen(false); onCreateLook(palette); }} />}
     </section>
   );
 }
@@ -263,7 +302,7 @@ const dayIndex = (count) => {
 };
 
 // One combination of the day, with 2, 3 or 4 colours, and "ערבוב" for another
-function DailyCombo({ canLook, onClose, onCreateLook }) {
+function DailyCombo({ favorites, onToggleFavorite, canLook, onClose, onCreateLook }) {
   const [size, setSize] = useState(readSize);
   const pool = useMemo(() => PALETTES.filter((palette) => palette.colors.length === size), [size]);
   const [shuffled, setShuffled] = useState(null); // a palette number, after "ערבוב"
@@ -297,7 +336,10 @@ function DailyCombo({ canLook, onClose, onCreateLook }) {
               </div>
             ))}
           </div>
-          <p className="daily-combo__number">שילוב #{palette.number} מתוך {pool.length} שילובים של {size} צבעים</p>
+          <div className="daily-combo__meta">
+            <p className="daily-combo__number">שילוב #{palette.number} מתוך {pool.length} שילובים של {size} צבעים</p>
+            <HeartButton on={favorites.includes(palette.number)} onClick={() => onToggleFavorite(palette.number)} className="is-big" />
+          </div>
         </div>
         <footer className="lb-footer">
           <div className="lb-footer__actions">

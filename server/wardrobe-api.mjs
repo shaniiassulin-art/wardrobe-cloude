@@ -3379,6 +3379,16 @@ Respond in strict JSON format:
       // Wishlist: photos (inspiration photos, screenshots) with the pieces she wants from
       // each, each piece with an exact color and description. Saving is free and keeps
       // only the photo; a clean AI catalog photo of a piece is made on request.
+      // Favourite colour combinations (numbers in the colour book), kept with the profile
+      if (url.pathname === "/api/import/combo-favorites" && (request.method === "GET" || request.method === "PUT")) {
+        const wId = resolveWardrobeId(request, url);
+        const profile = await loadUserProfile(wId);
+        if (request.method === "GET") return json(200, { favorites: Array.isArray(profile.comboFavorites) ? profile.comboFavorites : [] });
+        const input = await body(request);
+        const favorites = [...new Set((Array.isArray(input.favorites) ? input.favorites : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 1000))].slice(0, 400);
+        await saveUserProfile(wId, { ...profile, comboFavorites: favorites });
+        return json(200, { favorites });
+      }
       if (url.pathname === "/api/import/wishlist" && request.method === "GET") {
         return json(200, await loadWishlist(resolveWardrobeId(request, url)));
       }
