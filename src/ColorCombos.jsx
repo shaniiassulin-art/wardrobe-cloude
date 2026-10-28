@@ -247,7 +247,7 @@ export function ColorCombos({ items, onCreateLook }) {
         })}
       </div>
       {!shown.length && <p className="look-filters__empty combos__none">אין שילובים שמתאימים לסינון.</p>}
-      {dailyOpen && <DailyCombo onClose={() => setDailyOpen(false)} onCreateLook={(palette) => { setDailyOpen(false); onCreateLook(palette); }} />}
+      {dailyOpen && <DailyCombo canLook={(palette) => palette.colors.some((color) => matchesFor(color).length > 0)} onClose={() => setDailyOpen(false)} onCreateLook={(palette) => { setDailyOpen(false); onCreateLook(palette); }} />}
     </section>
   );
 }
@@ -263,7 +263,7 @@ const dayIndex = (count) => {
 };
 
 // One combination of the day, with 2, 3 or 4 colours, and "ערבוב" for another
-function DailyCombo({ onClose, onCreateLook }) {
+function DailyCombo({ canLook, onClose, onCreateLook }) {
   const [size, setSize] = useState(readSize);
   const pool = useMemo(() => PALETTES.filter((palette) => palette.colors.length === size), [size]);
   const [shuffled, setShuffled] = useState(null); // a palette number, after "ערבוב"
@@ -302,9 +302,9 @@ function DailyCombo({ onClose, onCreateLook }) {
         <footer className="lb-footer">
           <div className="lb-footer__actions">
             <button className="lb-button" type="button" onClick={shuffle}><ArrowsClockwise size={15} /> ערבוב</button>
-            <button className="lb-button is-primary" type="button" onClick={() => onCreateLook({ number: palette.number, colors: palette.colors.map((color) => ({ hex: color.hex, name: color.name })) })}>
+            {canLook(palette) && <button className="lb-button is-primary" type="button" onClick={() => onCreateLook({ number: palette.number, colors: palette.colors.map((color) => ({ hex: color.hex, name: color.name })) })}>
               <MagicWand size={15} /> לוק מהשילוב
-            </button>
+            </button>}
           </div>
         </footer>
       </div>
