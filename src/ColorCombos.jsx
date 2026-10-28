@@ -226,6 +226,19 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
             </div>
           </div>
         )}
+        <div className="combos__row">
+          {[[0, "הכל"], [2, "2 צבעים"], [3, "3 צבעים"], [4, "4 צבעים"]].map(([value, label]) => (
+            <button key={value} type="button" className={`filter-chip${size === value ? " is-on" : ""}`} aria-pressed={size === value} onClick={() => setSize(value)}>{label}</button>
+          ))}
+          <button type="button" className={`filter-chip combos__fav-chip${onlyFavorites ? " is-on" : ""}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
+            <Heart size={13} weight={onlyFavorites ? "fill" : "regular"} aria-hidden="true" /> מועדפים{favorites.length > 0 && <small>{favorites.length}</small>}
+          </button>
+          {active && (
+            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); setOnlyFavorites(false); }}>
+              <X size={13} aria-hidden="true" /> ניקוי
+            </button>
+          )}
+        </div>
         <button type="button" className={`wardrobe-filters__toggle combos__shades-toggle${shade ? " is-active" : ""}`} aria-expanded={shadesOpen} onClick={() => setShadesOpen((value) => !value)}>
           {shade ? <span className="filter-chip__dot" style={{ background: shade.hex }} aria-hidden="true" /> : <span className="combos__shades-dots" aria-hidden="true">{["#c0392b", "#f1c40f", "#3e8e41", "#2f5d9c"].map((hex) => <span key={hex} style={{ background: hex }} />)}</span>}
           <span>{shade ? shade.name : "סינון לפי צבע"}</span>
@@ -245,19 +258,6 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
             </div>
           ))}
         </div>}
-        <div className="combos__row">
-          {[[0, "הכל"], [2, "2 צבעים"], [3, "3 צבעים"], [4, "4 צבעים"]].map(([value, label]) => (
-            <button key={value} type="button" className={`filter-chip${size === value ? " is-on" : ""}`} aria-pressed={size === value} onClick={() => setSize(value)}>{label}</button>
-          ))}
-          <button type="button" className={`filter-chip combos__fav-chip${onlyFavorites ? " is-on" : ""}`} aria-pressed={onlyFavorites} onClick={() => setOnlyFavorites((value) => !value)}>
-            <Heart size={13} weight={onlyFavorites ? "fill" : "regular"} aria-hidden="true" /> מועדפים{favorites.length > 0 && <small>{favorites.length}</small>}
-          </button>
-          {active && (
-            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); setOnlyFavorites(false); }}>
-              <X size={13} aria-hidden="true" /> ניקוי
-            </button>
-          )}
-        </div>
         <p className="combos__count">{shown.length} שילובים</p>
       </div>
 
