@@ -1031,27 +1031,14 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 /* The wardrobe's name a little smaller */
 .animated-title { font-size: clamp(27px, 3.8vw, 42px); }
 
-/* ------------------------------------------------------------------
-   Room for the host's badge ("Powered by Netlify") that sits at the
-   bottom of the screen: every page ends with enough space, and every
-   bar or footer pinned to the bottom lifts its buttons above it.
-   ------------------------------------------------------------------ */
-:root { --host-badge-space: 0px; }
-.gallery-grid, .looks-gallery, .archive-view .gallery-grid, .wishlist-view .gallery-grid { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
-.luggage-view { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
-.empty-wardrobe-container { padding-bottom: calc(var(--host-badge-space) + 24px); }
-.selection-bar { bottom: calc(var(--host-badge-space) + max(8px, env(safe-area-inset-bottom))) !important; }
-.item-sheet__footer { padding-bottom: calc(var(--host-badge-space) + max(10px, env(safe-area-inset-bottom))) !important; }
-.lb-footer { padding-bottom: calc(var(--host-badge-space) + max(10px, env(safe-area-inset-bottom))) !important; }
+/* Pages end with just enough room for the add-clothes button (kept by the page itself) */
+.gallery-grid, .looks-gallery, .luggage-view { padding-bottom: 88px !important; }
+@media (max-width: 640px) { .gallery-grid, .looks-gallery, .luggage-view { padding-bottom: 24px !important; } }
+/* Windows end with a little room under their last field */
 .wish-modal .lb-body, .look-builder .lb-body, .inspo .lb-body, .wish-add .lb-body { padding-bottom: 28px; }
-/* Centred windows (a look, the profile) end above the badge */
-.builder-modal-overlay:not(.look-builder-overlay) { padding-bottom: calc(var(--host-badge-space) + 8px); }
-.builder-modal-overlay:not(.look-builder-overlay) > .builder-modal { max-height: calc(100dvh - var(--host-badge-space) - 32px); }
-/* The add-clothes button stays in the bottom-left corner (the badge is on the right) */
-.lightbox__caption { bottom: calc(var(--host-badge-space) + 8px) !important; }
 
 /* Colour combinations (Sanzo Wada) */
-.combos { padding: 22px 52px calc(var(--host-badge-space) + 48px); }
+.combos { padding: 22px 52px 24px; }
 @media (max-width: 1100px) { .combos { padding-inline: 32px; } }
 @media (max-width: 720px) { .combos { padding-inline: 20px; } }
 @media (max-width: 520px) { .combos { padding-inline: var(--gutter); padding-top: 16px; } }
