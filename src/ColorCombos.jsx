@@ -156,26 +156,26 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
       <div className="combos__intro">
         <h2>שילובי צבעים</h2>
         <p>348 שילובים מספר הצבעים היפני של סאנזו ואדה. דגמי צבעים מתמונות של בגדים כדי למצוא שילובים, ו"לוק מהשילוב" יציע לך בגדים בצבעים שלו.</p>
-        <button type="button" className="combos__daily-btn" onClick={() => setDailyOpen(true)}>
-          <Sparkle size={16} aria-hidden="true" /> השילוב היומי
-        </button>
+        <div className="combos__row combos__actions">
+          <button type="button" className="combos__daily-btn" onClick={() => setDailyOpen(true)}>
+            <Sparkle size={16} aria-hidden="true" /> השילוב היומי
+          </button>
+          {!scan && !samples.length && (
+            <>
+              <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()} aria-label="צילום בגד לדגימת צבע">
+                <Camera size={17} aria-hidden="true" /> צילום
+              </button>
+              <button type="button" className="combos__scan-btn is-light" onClick={() => galleryRef.current?.click()} aria-label="תמונה מהגלריה לדגימת צבע">
+                <ImageSquare size={17} aria-hidden="true" /> גלריה
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="combos__filters">
         <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
         <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
-        {!scan && !samples.length && (
-          <div className="combos__scan-start">
-            <div className="combos__row">
-              <button type="button" className="combos__scan-btn" onClick={() => fileRef.current?.click()}>
-                <Camera size={17} aria-hidden="true" /> צילום בגד
-              </button>
-              <button type="button" className="combos__scan-btn is-light" onClick={() => galleryRef.current?.click()}>
-                <ImageSquare size={17} aria-hidden="true" /> מהגלריה
-              </button>
-            </div>
-          </div>
-        )}
         {scan && (
           <div className="combos__scan">
             <p className="combos__scan-hint">געי בצבע בתמונה, ואז "הוספת הצבע". אפשר לדגום כמה צבעים מאותה תמונה.</p>

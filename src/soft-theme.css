@@ -1174,3 +1174,10 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combo__heart.is-over { position: absolute; z-index: 1; top: 18px; inset-inline-start: 18px; width: 32px; height: 32px; background: rgba(255, 255, 255, .88); color: #6f6760; box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
 .combo__heart.is-over.is-on { color: #c2414b; }
 @media (max-width: 420px) { .combo__heart.is-over { top: 14px; inset-inline-start: 14px; width: 30px; height: 30px; } }
+/* The daily combination, the camera and the gallery in one row */
+.combos__actions { margin-top: 14px; gap: 8px; }
+.combos__actions .combos__daily-btn { margin-top: 0; }
+@media (max-width: 420px) { .combos__actions .combos__daily-btn, .combos__actions .combos__scan-btn { padding-inline: 13px; font-size: 13px; } }
+.combos__actions { flex-wrap: nowrap; }
+.combos__actions > button { flex: none; white-space: nowrap; }
+@media (max-width: 420px) { .combos__actions { gap: 6px; } .combos__actions .combos__daily-btn, .combos__actions .combos__scan-btn { padding-inline: 12px; gap: 5px; } }
