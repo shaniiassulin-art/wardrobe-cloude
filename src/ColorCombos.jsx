@@ -47,7 +47,6 @@ export function ColorCombos({ items, onCreateLook }) {
   const [dailyOpen, setDailyOpen] = useState(false);
   const [pieceId, setPieceId] = useState(null);
   const [size, setSize] = useState(0);
-  const [onlyMine, setOnlyMine] = useState(false);
   // A garment photo (camera or gallery): its colour, picked by touching it
   const [scan, setScan] = useState(null); // { photo, hex, x, y }
   // Colours sampled from one or more photos; combinations are found for them together
@@ -108,15 +107,14 @@ export function ColorCombos({ items, onCreateLook }) {
       });
       return { ...palette, sampledAt, sampled: sampledAt.filter((index) => index >= 0).length, matches: palette.colors.map(matchesFor) };
     })
-    .filter((palette) => !onlyMine || palette.matches.filter((list) => list.length).length >= Math.min(2, palette.colors.length)),
-  [shadeId, piece, samples, size, onlyMine, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
+  [shadeId, piece, samples, size, pieces]); // eslint-disable-line react-hooks/exhaustive-deps
   // With sampled colours: the combinations that have all of them, or if there are
   // none, the ones that have the most of them
   const bestSampled = samples.length ? Math.max(0, ...candidates.map((palette) => palette.sampled)) : 0;
   const shown = samples.length ? candidates.filter((palette) => bestSampled > 0 && palette.sampled === bestSampled) : candidates;
 
   const shade = shadeId === null ? null : SHADES[shadeId];
-  const active = Boolean(shade || piece || samples.length || size || onlyMine);
+  const active = Boolean(shade || piece || samples.length || size);
 
   return (
     <section className="combos" aria-label="שילובי צבעים">
@@ -216,9 +214,8 @@ export function ColorCombos({ items, onCreateLook }) {
           {[[0, "הכל"], [2, "2 צבעים"], [3, "3 צבעים"], [4, "4 צבעים"]].map(([value, label]) => (
             <button key={value} type="button" className={`filter-chip${size === value ? " is-on" : ""}`} aria-pressed={size === value} onClick={() => setSize(value)}>{label}</button>
           ))}
-          <button type="button" className={`filter-chip${onlyMine ? " is-on" : ""}`} aria-pressed={onlyMine} onClick={() => setOnlyMine((value) => !value)}>יש לי בארון</button>
           {active && (
-            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); setOnlyMine(false); }}>
+            <button type="button" className="wardrobe-filters__clear" onClick={() => { setShadeId(null); setPieceId(null); setSamples([]); setSize(0); }}>
               <X size={13} aria-hidden="true" /> ניקוי
             </button>
           )}
