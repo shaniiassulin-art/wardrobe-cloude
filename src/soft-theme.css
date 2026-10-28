@@ -1036,7 +1036,7 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
    bottom of the screen: every page ends with enough space, and every
    bar or footer pinned to the bottom lifts its buttons above it.
    ------------------------------------------------------------------ */
-:root { --host-badge-space: 72px; }
+:root { --host-badge-space: 0px; }
 .gallery-grid, .looks-gallery, .archive-view .gallery-grid, .wishlist-view .gallery-grid { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
 .luggage-view { padding-bottom: calc(var(--host-badge-space) + 48px) !important; }
 .empty-wardrobe-container { padding-bottom: calc(var(--host-badge-space) + 24px); }
