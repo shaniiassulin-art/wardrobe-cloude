@@ -1153,3 +1153,15 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combos__shades-dots { display: inline-flex; }
 .combos__shades-dots span { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--surface); }
 .combos__shades-dots span + span { margin-inline-start: -4px; }
+
+/* The daily combination */
+.combos__daily-btn { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: linear-gradient(90deg, #b8434a, #d9a441, #4f7a5a, #3b5b8c); color: #fff; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(60, 40, 30, .14); }
+.daily-combo__sizes { margin-bottom: 16px; }
+.daily-combo__colors { display: flex; height: min(52vh, 420px); border-radius: 20px; overflow: hidden; animation: daily-in 380ms ease; }
+.daily-combo__color { flex: 1; display: flex; align-items: flex-end; justify-content: center; padding: 14px 6px; }
+.daily-combo__color span { display: grid; gap: 2px; text-align: center; font-size: 12px; line-height: 1.3; color: rgba(255, 255, 255, .95); direction: ltr; }
+.daily-combo__color span.is-dark { color: rgba(0, 0, 0, .7); }
+.daily-combo__color small { font-size: 10px; opacity: .75; letter-spacing: .04em; }
+.daily-combo__number { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+@keyframes daily-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .daily-combo__colors { animation: none; } }

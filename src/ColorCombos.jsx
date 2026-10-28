@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Camera, CaretDown, ImageSquare, MagicWand, Plus, X } from "@phosphor-icons/react";
+import { ArrowsClockwise, Camera, CaretDown, ImageSquare, MagicWand, Plus, Sparkle, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
 import { CLOSE, deltaE, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
@@ -44,6 +44,7 @@ const PALETTES = WADA_PALETTES.map(([number, indexes]) => ({ number, colors: ind
 export function ColorCombos({ items, onCreateLook }) {
   const [shadeId, setShadeId] = useState(null);
   const [shadesOpen, setShadesOpen] = useState(false);
+  const [dailyOpen, setDailyOpen] = useState(false);
   const [pieceId, setPieceId] = useState(null);
   const [size, setSize] = useState(0);
   const [onlyMine, setOnlyMine] = useState(false);
@@ -122,6 +123,9 @@ export function ColorCombos({ items, onCreateLook }) {
       <div className="combos__intro">
         <h2>שילובי צבעים</h2>
         <p>348 שילובים מספר הצבעים היפני של סאנזו ואדה. דגמי צבעים מתמונות של בגדים כדי למצוא שילובים, ו"לוק מהשילוב" יציע לך בגדים בצבעים שלו.</p>
+        <button type="button" className="combos__daily-btn" onClick={() => setDailyOpen(true)}>
+          <Sparkle size={16} aria-hidden="true" /> השילוב היומי
+        </button>
       </div>
 
       <div className="combos__filters">
@@ -246,6 +250,67 @@ export function ColorCombos({ items, onCreateLook }) {
         })}
       </div>
       {!shown.length && <p className="look-filters__empty combos__none">אין שילובים שמתאימים לסינון.</p>}
+      {dailyOpen && <DailyCombo onClose={() => setDailyOpen(false)} onCreateLook={(palette) => { setDailyOpen(false); onCreateLook(palette); }} />}
     </section>
+  );
+}
+
+const SIZE_KEY = "daily-combo-size";
+const readSize = () => { try { return Number(localStorage.getItem(SIZE_KEY)) || 3; } catch { return 3; } };
+// The same combination all day, a different one each day (per number of colours)
+const dayIndex = (count) => {
+  const day = new Date().toLocaleDateString("en-CA");
+  let hash = 0;
+  for (const char of day) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % count;
+};
+
+// One combination of the day, with 2, 3 or 4 colours, and "ערבוב" for another
+function DailyCombo({ onClose, onCreateLook }) {
+  const [size, setSize] = useState(readSize);
+  const pool = useMemo(() => PALETTES.filter((palette) => palette.colors.length === size), [size]);
+  const [shuffled, setShuffled] = useState(null); // a palette number, after "ערבוב"
+  const palette = (shuffled !== null && pool.find((entry) => entry.number === shuffled)) || pool[dayIndex(pool.length)];
+  const chooseSize = (value) => {
+    setSize(value);
+    setShuffled(null);
+    try { localStorage.setItem(SIZE_KEY, String(value)); } catch { /* not kept */ }
+  };
+  const shuffle = () => {
+    const others = pool.filter((entry) => entry.number !== palette.number);
+    setShuffled(others[Math.floor(Math.random() * others.length)].number);
+  };
+  return (
+    <div className="builder-modal-overlay look-builder-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="builder-modal look-builder daily-combo" role="dialog" aria-modal="true" aria-labelledby="daily-title">
+        <header className="lb-header">
+          <h2 id="daily-title">{shuffled === null ? "השילוב היומי" : "שילוב אחר"}</h2>
+          <button className="lb-close" type="button" onClick={onClose} aria-label="סגירה"><X size={18} /></button>
+        </header>
+        <div className="lb-body">
+          <div className="styling-choice__options daily-combo__sizes" role="radiogroup" aria-label="מספר הצבעים">
+            {[2, 3, 4].map((value) => (
+              <button key={value} type="button" role="radio" aria-checked={size === value} className={size === value ? "is-on" : ""} onClick={() => chooseSize(value)}>{value} צבעים</button>
+            ))}
+          </div>
+          <div key={palette.number} className="daily-combo__colors">
+            {palette.colors.map((color, index) => (
+              <div key={index} className="daily-combo__color" style={{ background: color.hex }}>
+                <span className={color.lab[0] > 62 ? "is-dark" : ""}>{color.name}<small>{color.hex.toUpperCase()}</small></span>
+              </div>
+            ))}
+          </div>
+          <p className="daily-combo__number">שילוב #{palette.number} מתוך {pool.length} שילובים של {size} צבעים</p>
+        </div>
+        <footer className="lb-footer">
+          <div className="lb-footer__actions">
+            <button className="lb-button" type="button" onClick={shuffle}><ArrowsClockwise size={15} /> ערבוב</button>
+            <button className="lb-button is-primary" type="button" onClick={() => onCreateLook({ number: palette.number, colors: palette.colors.map((color) => ({ hex: color.hex, name: color.name })) })}>
+              <MagicWand size={15} /> לוק מהשילוב
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
   );
 }
