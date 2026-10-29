@@ -93,7 +93,7 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
     if (current.some((sample) => sample.hex === hex)) return current;
     const lab = hexToLab(hex);
     const nearest = Math.min(...COLORS.map((color) => deltaE2000(lab, color.lab)));
-    return [...current, { id: `${hex}-${Date.now()}`, hex, lab, within: Math.max(SAMPLE_CLOSE, nearest + 2.5) }];
+    return [...current, { id: `${hex}-${Date.now()}`, hex, lab, exact: nearest <= SAMPLE_CLOSE, within: Math.max(SAMPLE_CLOSE, nearest + 2.5) }];
   });
   const removeSample = (id) => setSamples((current) => current.filter((sample) => sample.id !== id));
   const canvasRef = useRef(null);
@@ -199,7 +199,7 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
             {samples.length > 0 && (
               <div className="combos__samples" aria-label="הצבעים שדגמת">
                 {samples.map((sample) => (
-                  <button key={sample.id} type="button" className="combos__sample" style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label="הסרת הצבע"><X size={11} weight="bold" /></button>
+                  <button key={sample.id} type="button" className={`combos__sample${sample.exact ? "" : " is-similar"}`} style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label={sample.exact ? "הסרת הצבע" : "הסרת הצבע (אין לו שילובים בספר, מוצגים צבעים דומים)"}><X size={11} weight="bold" />{!sample.exact && <span className="combos__sample-similar" aria-hidden="true">≈</span>}</button>
                 ))}
               </div>
             )}
@@ -224,9 +224,16 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
               </p>
               <button type="button" className="lb-close combos__scanned-x" onClick={() => setSamples([])} aria-label="ניקוי הדגימות"><X size={14} /></button>
             </div>
+            {samples.some((sample) => !sample.exact) && (
+              <p className="combos__similar" role="status">
+                {samples.length === 1
+                  ? "אין בספר שילובים לצבע הזה. מוצגים שילובים לצבעים דומים לו."
+                  : "לחלק מהצבעים (מסומנים ב-≈) אין שילובים בספר. מוצגים שילובים לצבעים דומים להם."}
+              </p>
+            )}
             <div className="combos__samples">
               {samples.map((sample) => (
-                <button key={sample.id} type="button" className="combos__sample" style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label="הסרת הצבע"><X size={11} weight="bold" /></button>
+                <button key={sample.id} type="button" className={`combos__sample${sample.exact ? "" : " is-similar"}`} style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label={sample.exact ? "הסרת הצבע" : "הסרת הצבע (אין לו שילובים בספר, מוצגים צבעים דומים)"}><X size={11} weight="bold" />{!sample.exact && <span className="combos__sample-similar" aria-hidden="true">≈</span>}</button>
               ))}
               <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> עוד צבע</button>
               <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> מהגלריה</button>

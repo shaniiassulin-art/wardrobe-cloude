@@ -1181,3 +1181,7 @@ h1, h2, h3, .lb-section__head h3, .empty-wardrobe-title { font-weight: 550; }
 .combos__actions { flex-wrap: nowrap; }
 .combos__actions > button { flex: none; white-space: nowrap; }
 @media (max-width: 420px) { .combos__actions { gap: 6px; } .combos__actions .combos__daily-btn, .combos__actions .combos__scan-btn { padding-inline: 12px; gap: 5px; } }
+/* A sampled colour the book does not have: similar colours are shown instead */
+.combos__similar { margin: 0; padding: 8px 12px; border-radius: 12px; background: #f6ece2; color: #7a5a3c; font-size: 12.5px; line-height: 1.5; }
+.combos__sample { position: relative; }
+.combos__sample-similar { position: absolute; top: -4px; inset-inline-end: -4px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); color: #7a5a3c; font-size: 11px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 1px var(--line); }
