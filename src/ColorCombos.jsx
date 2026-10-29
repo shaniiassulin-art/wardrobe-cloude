@@ -87,6 +87,9 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
   const [samples, setSamples] = useState([]); // [{ id, hex, lab }]
   const fileRef = useRef(null);
   const galleryRef = useRef(null);
+  // The last photo sampled, to sample another colour from it
+  const lastPhotoRef = useRef(null);
+  const scannedRef = useRef(null);
   // A sample matches the book's colours that look the same as it (ΔE2000). When the
   // book has none that close, the ones nearest to it, so there is always an answer.
   const addSample = (hex) => setSamples((current) => {
@@ -185,34 +188,34 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
         <input ref={galleryRef} type="file" accept="image/*" hidden onChange={(event) => { openPhoto(event.target.files?.[0]); event.target.value = ""; }} />
         {scan && (
           <div className="combos__scan">
-            <p className="combos__scan-hint">געי בצבע בתמונה, ואז "הוספת הצבע". אפשר לדגום כמה צבעים מאותה תמונה.</p>
+            <div className="combos__scan-top">
+              <p className="combos__scan-hint">געי בצבע בתמונה ולחצי "הוספת הצבע"</p>
+              <button type="button" className="lb-close combos__scanned-x" onClick={() => setScan(null)} aria-label="סגירת התמונה"><X size={14} /></button>
+            </div>
             <div className="combos__scan-photo" onClick={pickAt} role="button" tabIndex={0} aria-label="בחירת הצבע בתמונה">
               <img src={scan.photo} alt="התמונה לדגימה" />
               <span className="combos__scan-mark" style={{ left: `${scan.x * 100}%`, top: `${scan.y * 100}%`, background: scan.hex }} aria-hidden="true" />
             </div>
             <div className="combos__scan-actions">
               <span className="combos__scan-swatch" style={{ background: scan.hex }} aria-hidden="true" />
-              <button type="button" className="combo__look" disabled={samples.some((sample) => sample.hex === scan.hex)} onClick={() => { addSample(scan.hex); setPieceId(null); setShadeId(null); }}>
+              <button type="button" className="combo__look" disabled={samples.some((sample) => sample.hex === scan.hex)} onClick={() => {
+                addSample(scan.hex); setPieceId(null); setShadeId(null);
+                lastPhotoRef.current = { ...scan, canvas: canvasRef.current };
+                setScan(null);
+                requestAnimationFrame(() => scannedRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+              }}>
                 <Plus size={13} aria-hidden="true" /> {samples.some((sample) => sample.hex === scan.hex) ? "נוסף" : "הוספת הצבע"}
               </button>
             </div>
-            {samples.length > 0 && (
-              <div className="combos__samples" aria-label="הצבעים שדגמת">
-                {samples.map((sample) => (
-                  <button key={sample.id} type="button" className={`combos__sample${sample.exact ? "" : " is-similar"}`} style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label={sample.exact ? "הסרת הצבע" : "הסרת הצבע (אין לו שילובים בספר, מוצגים צבעים דומים)"}><X size={11} weight="bold" />{!sample.exact && <span className="combos__sample-similar" aria-hidden="true">≈</span>}</button>
-                ))}
-              </div>
-            )}
             <div className="combos__scan-actions">
-              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> צילום נוסף</button>
-              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> תמונה מהגלריה</button>
-              <button type="button" className="combos__scan-done" onClick={() => setScan(null)}>{samples.length ? `הצגת שילובים (${samples.length} ${samples.length === 1 ? "צבע" : "צבעים"})` : "ביטול"}</button>
+              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> צילום אחר</button>
+              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> תמונה אחרת מהגלריה</button>
             </div>
             <p className="combos__scan-note">כדאי לצלם באור יום, בלי פלאש. תאורה חמה או צל משנים את הגוון.</p>
           </div>
         )}
         {!scan && samples.length > 0 && (
-          <div className="combos__scanned">
+          <div className="combos__scanned" ref={scannedRef}>
             <div className="combos__scanned-top">
               <p>
                 <strong>{samples.length === 1 ? "שילובים לצבע שדגמת" : `שילובים ל-${samples.length} הצבעים שדגמת`}</strong>
@@ -235,8 +238,11 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
               {samples.map((sample) => (
                 <button key={sample.id} type="button" className={`combos__sample${sample.exact ? "" : " is-similar"}`} style={{ background: sample.hex }} onClick={() => removeSample(sample.id)} aria-label={sample.exact ? "הסרת הצבע" : "הסרת הצבע (אין לו שילובים בספר, מוצגים צבעים דומים)"}><X size={11} weight="bold" />{!sample.exact && <span className="combos__sample-similar" aria-hidden="true">≈</span>}</button>
               ))}
-              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> עוד צבע</button>
-              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> מהגלריה</button>
+              {lastPhotoRef.current && (
+                <button type="button" className="filter-chip" onClick={() => { canvasRef.current = lastPhotoRef.current.canvas; setScan(lastPhotoRef.current); }}><Plus size={13} aria-hidden="true" /> מאותה תמונה</button>
+              )}
+              <button type="button" className="filter-chip" onClick={() => fileRef.current?.click()}><Camera size={13} aria-hidden="true" /> צילום</button>
+              <button type="button" className="filter-chip" onClick={() => galleryRef.current?.click()}><ImageSquare size={13} aria-hidden="true" /> גלריה</button>
             </div>
           </div>
         )}
