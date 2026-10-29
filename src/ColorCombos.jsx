@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwise, Camera, CaretDown, Heart, ImageSquare, MagicWand, Plus, Sparkle, X } from "@phosphor-icons/react";
 import { COLOR_FAMILIES, colorFamily } from "./colors.js";
-import { CLOSE, deltaE, hexToLab } from "./color-match.js";
+import { CLOSE, SAMPLE_CLOSE, deltaE, deltaE2000, hexToLab } from "./color-match.js";
 import { WADA_COLORS, WADA_PALETTES } from "./wada-palettes.js";
 
 const toHex = (r, g, b) => `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
@@ -87,7 +87,14 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
   const [samples, setSamples] = useState([]); // [{ id, hex, lab }]
   const fileRef = useRef(null);
   const galleryRef = useRef(null);
-  const addSample = (hex) => setSamples((current) => (current.some((sample) => sample.hex === hex) ? current : [...current, { id: `${hex}-${Date.now()}`, hex, lab: hexToLab(hex) }]));
+  // A sample matches the book's colours that look the same as it (ΔE2000). When the
+  // book has none that close, the ones nearest to it, so there is always an answer.
+  const addSample = (hex) => setSamples((current) => {
+    if (current.some((sample) => sample.hex === hex)) return current;
+    const lab = hexToLab(hex);
+    const nearest = Math.min(...COLORS.map((color) => deltaE2000(lab, color.lab)));
+    return [...current, { id: `${hex}-${Date.now()}`, hex, lab, within: Math.max(SAMPLE_CLOSE, nearest + 2.5) }];
+  });
   const removeSample = (id) => setSamples((current) => current.filter((sample) => sample.id !== id));
   const canvasRef = useRef(null);
   const openPhoto = (file) => {
@@ -137,7 +144,7 @@ export function ColorCombos({ items, wardrobeId = "user-shani", onCreateLook }) 
       // The colour of the combination closest to each sampled colour, when close enough
       const sampledAt = samples.map((sample) => {
         let best = -1;
-        palette.colors.forEach((color, index) => { if (deltaE(sample.lab, color.lab) <= CLOSE && (best < 0 || deltaE(sample.lab, color.lab) < deltaE(sample.lab, palette.colors[best].lab))) best = index; });
+        palette.colors.forEach((color, index) => { const d = deltaE2000(sample.lab, color.lab); if (d <= sample.within && (best < 0 || d < deltaE2000(sample.lab, palette.colors[best].lab))) best = index; });
         return best;
       });
       return { ...palette, sampledAt, sampled: sampledAt.filter((index) => index >= 0).length, matches: palette.colors.map(matchesFor) };
